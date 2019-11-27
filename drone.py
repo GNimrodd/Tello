@@ -52,7 +52,7 @@ class Drone:
         self.tello_wifi = tello_wifi
         self.armed = False
         self.command_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        self.video = CameraStream()
+        # self.video = CameraStream()
 
         self.location = Vec3D(0, 0, 0)
         self.speed = 100
@@ -262,12 +262,12 @@ def test_flip(drone: Drone):
     drone.flip.left()
 
 
-TELLO_WIFI = "TELLO-579043"
+DRONES = {"Frodo": "TELLO-579043", "Sam": "TELLO-578FDA"}
 
 
 def main():
     Drone.logger.setLevel(logging.DEBUG)
-    d = Drone(TELLO_WIFI)
+    d = Drone(DRONES["Frodo"])
     d.arm()
     if d.get_battery() < 30:
         print(f"battery low: {d.battery}, charge and test again later")
