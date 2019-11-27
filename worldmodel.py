@@ -1,10 +1,10 @@
-
-
 class WorldObject:
     pass
 
+
 class DroneObject(WorldObject):
     pass
+
 
 class Surface3D(WorldObject):
     pass
