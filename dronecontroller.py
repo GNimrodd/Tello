@@ -5,7 +5,7 @@ import numpy as np
 import threading
 import socket
 import winwifi
-
+import sys
 import cv2
 from opencvutils.Camera import CameraCV
 from videostream import VideoStreamWidget, CameraStream
@@ -31,13 +31,6 @@ class TelloResponse(Enum):
 
 class DroneController:
     """
-    A drone controller, used to communicate with the tello drone
-    """
-    pass
-
-
-class Drone:
-    """
     A drone representation.
     Saves drone data
     """
@@ -52,18 +45,13 @@ class Drone:
         self.tello_wifi = tello_wifi
         self.armed = False
         self.command_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        # self.video = CameraStream()
-
-        self.location = Vec3D(0, 0, 0)
-        self.speed = 100
-        self.angle = 0
 
         self.battery = 0
 
     def help(self):
         print('\n'.join(self.__dict__.keys()))
 
-    def arm(self) -> "Drone":
+    def arm(self) -> "DroneController":
         self.logger.debug(f"Conneting to wifi: {self.tello_wifi}")
         winwifi.WinWiFi.connect(self.tello_wifi)
         self.armed = True
@@ -82,7 +70,6 @@ class Drone:
         self._send_command("streamoff")
         self.video.done = True
         self.video.join()
-        self.video = CameraStream()
 
     def shutdown(self):
         self.command_socket.close()
@@ -97,20 +84,18 @@ class Drone:
         self._send_command("emergency")
 
     class MoveControl:
-        def __init__(self, drone: "Drone"):
+        def __init__(self, drone: "DroneController"):
             self.drone = drone
 
         def up(self, x: int):
             if x < 20 or x > 500:
                 raise ValueError(f"Illegal value: {x}")
             self.drone._send_command(f"up {x}")
-            # self.drone.location.z += x
 
         def down(self, x: int):
             if x < 20 or x > 500:
                 raise ValueError(f"Illegal value: {x}")
             self.drone._send_command(f"down {x}")
-            # self.drone.location.z -= x
 
         def left(self, x: int):
             if x < 20 or x > 500:
@@ -134,10 +119,10 @@ class Drone:
 
     @property
     def move(self):
-        return Drone.MoveControl(self)
+        return DroneController.MoveControl(self)
 
     class RotateControl:
-        def __init__(self, drone: "Drone"):
+        def __init__(self, drone: "DroneController"):
             self.drone = drone
 
         def cw(self, x: int):
@@ -152,10 +137,10 @@ class Drone:
 
     @property
     def rotate(self):
-        return Drone.RotateControl(self)
+        return DroneController.RotateControl(self)
 
     class FlipControl:
-        def __init__(self, drone: "Drone"):
+        def __init__(self, drone: "DroneController"):
             self.drone = drone
 
         def back(self):
@@ -175,7 +160,7 @@ class Drone:
 
     @property
     def flip(self):
-        return Drone.FlipControl(self)
+        return DroneController.FlipControl(self)
 
     def go(self, p: Vec3D, speed: int):
         self._send_command(f"go {p.x} {p.y} {p.z} {speed}")
@@ -239,7 +224,7 @@ class Drone:
 
 
 def assert_armed(func):
-    def new_func(drone: Drone):
+    def new_func(drone: DroneController):
         assert drone.armed, "Drone isn't connected"
         return func(drone)
 
@@ -247,7 +232,7 @@ def assert_armed(func):
 
 
 @assert_armed
-def test_motion(drone: Drone):
+def test_motion(drone: DroneController):
     drone.move.up(30)
     drone.move.right(30)
     drone.move.left(30)
@@ -255,19 +240,21 @@ def test_motion(drone: Drone):
 
 
 @assert_armed
-def test_flip(drone: Drone):
+def test_flip(drone: DroneController):
     drone.flip.back()
     drone.flip.forward()
     drone.flip.right()
     drone.flip.left()
 
 
-DRONES = {"Frodo": "TELLO-579043", "Sam": "TELLO-578FDA"}
+Frodo = "TELLO-579043"
+Sam = "TELLO-578FDA"
+DRONES = {"Frodo": Frodo, "Sam": Sam}
 
 
 def main():
-    Drone.logger.setLevel(logging.DEBUG)
-    d = Drone(DRONES["Frodo"])
+    DroneController.logger.setLevel(logging.DEBUG)
+    d = DroneController(sys.argv[1])
     d.arm()
     if d.get_battery() < 30:
         print(f"battery low: {d.battery}, charge and test again later")
