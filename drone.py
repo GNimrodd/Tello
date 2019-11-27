@@ -8,12 +8,14 @@ import winwifi
 
 import cv2
 from opencvutils.Camera import CameraCV
+from videostream import VideoStreamWidget, CameraStream
 
 
-class Vec3D(NamedTuple):
-    x: int
-    y: int
-    z: int
+class Vec3D:
+    def __init__(self, x=None, y=None, z=None):
+        self.x: int = x
+        self.y: int = y
+        self.z: int = z
 
 
 class IMU(NamedTuple):
@@ -27,33 +29,17 @@ class TelloResponse(Enum):
     ERROR = 1
 
 
-class VideoCamera(threading.Thread):
-    def __init__(self):
-        super().__init__()
-        self.camera = CameraCV()
-        self.camera.init(win=(800, 600), cameraNumber=11111)
-        self.done = False
-
-    def run(self):
-        pass
-        # try:
-        #     while self.camera.isOpen():
-        #         success, frame = self.camera.read()
-        #         if not success:2wsx
-        #             break
-        #
-        #         cv2.imshow("Output Frame", frame)
-        #
-        #         key = cv2.waitKey(1) & 0xFF
-        #         if key == ord("q"):
-        #             break
-        # finally:
-        #     cv2.destroyAllWindows()
+class DroneController:
+    """
+    A drone controller, used to communicate with the tello drone
+    """
+    pass
 
 
 class Drone:
     """
-    A drone representation
+    A drone representation.
+    Saves drone data
     """
 
     logger = logging.getLogger("DroneLogger")
@@ -66,8 +52,7 @@ class Drone:
         self.tello_wifi = tello_wifi
         self.armed = False
         self.command_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-
-        self.video = VideoCamera()
+        self.video = CameraStream()
 
         self.location = Vec3D(0, 0, 0)
         self.speed = 100
@@ -82,12 +67,11 @@ class Drone:
         self.logger.debug(f"Conneting to wifi: {self.tello_wifi}")
         winwifi.WinWiFi.connect(self.tello_wifi)
         self.armed = True
-        self.logger.debug("Binding command socket")
+        self.logger.debug("Binding sockets")
         self.command_socket.bind(self.LOCAL_ADDRESS)
         self.logger.debug("Arming...")
-
         self._send_command("command")
-
+        self.get_battery()
         return self
 
     def streamon(self):
@@ -98,7 +82,7 @@ class Drone:
         self._send_command("streamoff")
         self.video.done = True
         self.video.join()
-        self.video = VideoCamera()
+        self.video = CameraStream()
 
     def shutdown(self):
         self.command_socket.close()
