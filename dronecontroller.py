@@ -8,7 +8,7 @@ import winwifi
 import sys
 import cv2
 from opencvutils.Camera import CameraCV
-from videostream import VideoStreamWidget, CameraStream
+from videostream import CameraStream
 
 
 class Vec3D:
@@ -45,8 +45,12 @@ class DroneController:
         self.tello_wifi = tello_wifi
         self.armed = False
         self.command_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-
+        self.stream = None
         self.battery = 0
+
+    @classmethod
+    def set_debug(cls):
+        logging.getLogger().setLevel(logging.DEBUG)
 
     def help(self):
         print('\n'.join(self.__dict__.keys()))
@@ -64,12 +68,13 @@ class DroneController:
 
     def streamon(self):
         self._send_command("streamon")
-        self.video.start()
+        self.stream = CameraStream(f"{self.tello_wifi}")
+        self.stream.start()
 
     def streamoff(self):
         self._send_command("streamoff")
-        self.video.done = True
-        self.video.join()
+        self.stream.stop()
+        self.stream.join()
 
     def shutdown(self):
         self.command_socket.close()
@@ -254,14 +259,19 @@ DRONES = {"Frodo": Frodo, "Sam": Sam}
 
 def main():
     DroneController.logger.setLevel(logging.DEBUG)
-    d = DroneController(sys.argv[1])
+    DroneController.set_debug()
+    d = DroneController(Frodo)
     d.arm()
-    if d.get_battery() < 30:
-        print(f"battery low: {d.battery}, charge and test again later")
-    else:
-        d.takeoff()
-        test_motion(d)
-        test_flip(d)
+    try:
+        d.streamon()
+        # if d.get_battery() < 30:
+        #     print(f"battery low: {d.battery}, charge and test again later")
+        # else:
+        #     d.takeoff()
+        #     test_motion(d)
+        #     test_flip(d)
+    finally:
+        d.land()
     d.shutdown()
 
 
