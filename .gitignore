@@ -1,2 +1,8 @@
-.idea/*
 dependencies/*
+Pipfile.lock
+__pycache__/controller.cpython-37.pyc
+__pycache__/decorators.cpython-37.pyc
+__pycache__/tello.cpython-37.pyc
+venv/*
+.idea/*
+Pipfile
