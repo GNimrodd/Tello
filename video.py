@@ -14,7 +14,8 @@ class BackgroundFrameRead:
         tello.cap = cv2.VideoCapture(address)
         self.cap = tello.cap
         save_video = kwargs.get('save_video', None)
-        self.video_writer = cv2.VideoWriter(save_video, 'H264') if save_video else None
+        h264 = cv2.VideoWriter_fourcc(*"H264")
+        self.video_writer = cv2.VideoWriter(save_video, h264, 30, (1280, 360)) if save_video else None
 
         if not self.cap.isOpened():
             self.cap.open(address)
@@ -33,10 +34,10 @@ class BackgroundFrameRead:
                     self.stop()
                 else:
                     (self.grabbed, self.frame) = self.cap.read()
+                if self.video_writer:
+                    self.video_writer.write(self.frame)
                 if self.show_video:
                     cv2.imshow(self.name, self.frame)
-                    if self.video_writer:
-                        self.video_writer.write(self.frame)
                     if self.stopped or cv2.waitKey(1) & 0xFF == ord('q'):
                         self.stop()
                         cv2.destroyAllWindows()

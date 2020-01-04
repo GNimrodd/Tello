@@ -7,6 +7,7 @@ import cv2
 from decorators import accepts
 import dataclasses
 from video import BackgroundFrameRead
+import sys
 
 
 class Tello:
@@ -21,11 +22,9 @@ class Tello:
     TIME_BTW_COMMANDS = 1  # in seconds
     TIME_BTW_RC_CONTROL_COMMANDS = 0.5  # in seconds
     RETRY_COUNT = 3
-    last_received_command = time.time()
 
     HANDLER = logging.StreamHandler()
-    FORMATTER = logging.Formatter('%(filename)s - %(lineno)d - %(message)s')
-    HANDLER.setFormatter(FORMATTER)
+    HANDLER.setFormatter(logging.Formatter('%(filename)s - %(lineno)d - %(message)s'))
 
     LOGGER = logging.getLogger('djitellopy')
 
@@ -59,39 +58,7 @@ class Tello:
         acceleration_y: int = -1.0
         acceleration_z: int = -1.0
 
-    # VideoCapture object
-    cap = None
-    background_frame_read = None
-
-    stream_on = False
-
-    is_flying = False
-
-    # Tello state
-    pitch = -1
-    roll = -1
-    yaw = -1
-    speed_x = -1
-    speed_y = -1
-    speed_z = -1
-    temperature_lowest = -1
-    temperature_highest = -1
-    distance_tof = -1
-    height = -1
-    battery = -1
-    barometer = -1.0
-    flight_time = -1.0
-    acceleration_x = -1.0
-    acceleration_y = -1.0
-    acceleration_z = -1.0
-    # attitude = {'pitch': -1, 'roll': -1, 'yaw': -1}
-
-    def __init__(self,
-                 host='192.168.10.1',
-                 port=8889,
-                 client_socket=None,
-                 enable_exceptions=True,
-                 retry_count=3,
+    def __init__(self, host='192.168.10.1', port=8889, client_socket=None, enable_exceptions=True, retry_count=3,
                  **kwargs):
         self.address = (host, port)
         self.response = None
@@ -100,10 +67,22 @@ class Tello:
         self.enable_exceptions = enable_exceptions
         self.retry_count = retry_count
         self.show_video = kwargs.get('show_video', True)
-        self.name = kwargs.get('name', "video cam")
+        self.name = kwargs.get('name', "video_cam")
         self.state = Tello.TelloState()
-        # if wifi:
-        #     winwifi.WinWiFi.connect(wifi)
+        self.cap = None
+        self.background_frame_read = None
+        self.last_received_command = time.time()
+        self.stream_on = False
+        self.is_flying = False
+        if 'ssid' in kwargs:
+            if sys.platform == 'linux':
+                from wireless import Wireless
+                Wireless().connect(ssid=kwargs['ssid'], password=None)
+            elif sys.platform == 'win32' or sys.platform == 'cygwin':
+                import winwifi
+                winwifi.WinWiFi.connect(kwargs['ssid'])
+            else:
+                self.LOGGER.error(f"Can't connect automaticaly to {kwargs['ssid']} on {sys.platform}")
 
         if client_socket:
             self.clientSocket = client_socket
@@ -166,6 +145,7 @@ class Tello:
                 self.LOGGER.error(f"Response was is {self.response_state}")
                 break
 
+    @property
     def get_udp_video_address(self):
         return 'udp://@' + self.VS_UDP_IP + ':' + str(self.VS_UDP_PORT)  # + '?overrun_nonfatal=1&fifo_size=5000'
 
@@ -176,16 +156,16 @@ class Tello:
         """
 
         if self.cap is None:
-            self.cap = cv2.VideoCapture(self.get_udp_video_address())
+            self.cap = cv2.VideoCapture(self.get_udp_video_address)
 
         if not self.cap.isOpened():
-            self.cap.open(self.get_udp_video_address())
+            self.cap.open(self.get_udp_video_address)
 
         return self.cap
 
     def start_video_cam(self, **kwargs):
         if self.background_frame_read is None:
-            self.background_frame_read = BackgroundFrameRead(self, self.get_udp_video_address(), self.show_video,
+            self.background_frame_read = BackgroundFrameRead(self, self.get_udp_video_address, self.show_video,
                                                              self.name, **kwargs).start()
 
     def get_frame_read(self):
