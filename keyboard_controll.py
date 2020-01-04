@@ -5,7 +5,6 @@ import logging
 
 from mock import MagicMock
 
-
 class KeyboardControl:
     """
     controlling the drone via keyboard
@@ -15,8 +14,7 @@ class KeyboardControl:
 
     LOGGER = logging.getLogger("KeyboardController")
     LOGGER.addHandler(HANDLER)
-
-    LOGGER.setLevel(logging.DEBUG)
+    LOGGER.setLevel(logging.INFO)
 
     def __init__(self, drone: Tello, control_window_size: Tuple[int, int] = (400, 100)):
         self.drone = drone
@@ -64,7 +62,7 @@ class KeyboardControl:
                         self.LOGGER.debug("Returning control")
                         running = False
                     elif event.key == pygame.K_h:
-                        self.LOGGER.debug(
+                        print(
                             "Drone is being controlled by keyboard;\n"
                             "\t- Arrow Up:      move forward\n"
                             "\t- Arrow Down:    move forward\n"
@@ -79,6 +77,8 @@ class KeyboardControl:
 
 
 if __name__ == "__main__":
+    from mock import MagicMock
+
     drone = MagicMock()
     kc = KeyboardControl(drone)
     kc.LOGGER.setLevel(logging.DEBUG)
