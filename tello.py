@@ -74,10 +74,13 @@ class Tello:
         self.last_received_command = time.time()
         self.stream_on = False
         self.is_flying = False
+        self.wireless = None
         if 'ssid' in kwargs:
+            self.LOGGER.info(f"connecting to {kwargs['ssid']}")
             if sys.platform == 'linux':
                 from wireless import Wireless
-                Wireless().connect(ssid=kwargs['ssid'], password=None)
+                self.wireless = Wireless()
+                self.wireless.connect(ssid=kwargs['ssid'], password=None)
             elif sys.platform == 'win32' or sys.platform == 'cygwin':
                 import winwifi
                 winwifi.WinWiFi.connect(kwargs['ssid'])
@@ -95,15 +98,17 @@ class Tello:
                                          socket.SOCK_DGRAM)
         self.stateSocket.bind(('', self.STATE_UDP_PORT))  # for accessing the states of Tello
 
-        # Run tello udp receiver on background
-        thread1 = threading.Thread(target=self.run_udp_receiver, args=())
-        # Run state reciever on background
-        thread2 = threading.Thread(target=self.get_states, args=())
+        # if kwargs.get('init_udp_receiver', True):
+        #     self.init_udp_receiver()
+        #
+        # if kwargs.get('init_state_thread', True):
+        #     self.init_state_thread()
 
-        thread1.daemon = True
-        thread2.daemon = True
-        thread1.start()
-        thread2.start()
+    def init_udp_receiver(self):
+        threading.Thread(target=self.run_udp_receiver, args=(), daemon=True).start()
+
+    def init_state_thread(self):
+        threading.Thread(target=self.get_states, args=(), daemon=True).start()
 
     def run_udp_receiver(self):
         """Setup drone UDP receiver. This method listens for responses of Tello. Must be run from a background thread
@@ -139,7 +144,6 @@ class Tello:
                     self.state.acceleration_x = float(list[27])
                     self.state.acceleration_y = float(list[29])
                     self.state.acceleration_z = float(list[31])
-                    # self.attitude = {'pitch': int(list[1]), 'roll': int(list[3]), 'yaw': int(list[5])}
             except Exception as e:
                 self.LOGGER.error(e)
                 self.LOGGER.error(f"Response was is {self.response_state}")
@@ -272,14 +276,15 @@ class Tello:
         Return:
             bool: True for successful, False for unsuccessful
         """
-        response = None
-        for i in range(0, self.retry_count):
-            response = self.send_command_with_return(command, timeout=timeout)
-
-            if response == 'OK' or response == 'ok':
-                return True
-
-        return self.return_error_on_send_command(command, response, self.enable_exceptions)
+        self.send_command_without_return(command)
+        # response = None
+        # for i in range(0, self.retry_count):
+        #     response = self.send_command_with_return(command, timeout=timeout)
+        #
+        #     if response == 'OK' or response == 'ok':
+        #         return True
+        #
+        # return self.return_error_on_send_command(command, response, self.enable_exceptions)
 
     @accepts(command=str, printinfo=bool)
     def send_read_command(self, command, printinfo=True):
