@@ -5,6 +5,23 @@ import logging
 import cv2
 import numpy as np
 from utils import generate_logger
+from camera_stream import CameraStream
+from datetime import datetime
+
+
+class MockCam:
+    def __init__(self):
+        self.cap = cv2.VideoCapture(-1)
+        self.ret, self.frame = None, None
+        if not self.cap.isOpened():
+            self.cap.open(-1)
+
+    def get_frames(self):
+        self.ret, self.frame = self.cap.read()
+        return self.ret, self.frame
+
+    def __repr__(self):
+        return f"<{self.__class__.__name__}>"
 
 
 class KeyboardControl:
@@ -15,11 +32,11 @@ class KeyboardControl:
     LOGGER = generate_logger("KeyboardController")
 
     def __init__(self, drone: DroneController, control_window_size: Tuple[int, int] = (1280, 720),
-                 camera: bool = False):
+                 camera: CameraStream = None):
         self.drone = drone
         self.move_amount = 20
         self.rotate_amount = 30
-        self.camera = drone.stream if camera else None
+        self.camera = camera
         self.control_window_size = control_window_size
         self.screen = None
 
@@ -33,12 +50,11 @@ class KeyboardControl:
         pygame.display.set_caption("DJI Tello Control Window")
         running = True
         while running:
-            if self.camera:
+            if self.camera is not None:
                 ret, frame = self.camera.get_frames()
-
                 self.screen.fill([0, 0, 0])
                 frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-                frame = np.swapaxes(frame)
+                frame = frame.swapaxes(0, 1)
                 frame = pygame.surfarray.make_surface(frame)
                 self.screen.blit(frame, (0, 0))
                 pygame.display.update()
@@ -73,6 +89,10 @@ class KeyboardControl:
                         self.LOGGER.debug("Returning control")
                         self.drone.end()
                         running = False
+                    elif event.key == pygame.K_p:
+                        img_path = datetime.now().strftime('%Y%m%d-%H%M%S') + ".jpeg"
+                        self.LOGGER.debug(f"printscreen: {img_path}")
+                        cv2.imwrite(img_path, self.camera.frame)
                     elif event.key == pygame.K_h:
                         print(
                             "Drone is being controlled by keyboard;\n"
@@ -88,10 +108,11 @@ class KeyboardControl:
         pygame.quit()
         cv2.destroyAllWindows()
 
+
 if __name__ == "__main__":
     from mock import MagicMock
 
     drone = MagicMock()
-    kc = KeyboardControl(drone)
+    kc = KeyboardControl(drone, camera=MockCam())
     KeyboardControl.LOGGER.setLevel(logging.DEBUG)
-    KeyboardControl(drone).pass_control()
+    kc.pass_control()

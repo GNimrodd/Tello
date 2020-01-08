@@ -18,6 +18,7 @@ def set_deinfes(defines) -> Dict[str, Any]:
             defs[k] = v
     return defs
 
+
 # python3 main.py --ssid Frodo -v --with-camera --keyboard
 def get_args():
     ap = argparse.ArgumentParser()
@@ -55,7 +56,7 @@ def main():
             lsd_slam.run(drone.get_udp_video_address, )
         if args.keyboard:
             drone.takeoff()
-            KeyboardControl(drone, camera=args.with_camera).pass_control()
+            KeyboardControl(drone, camera=drone.stream if args.with_camera else None).pass_control()
         else:
             config = Config()
             config.banner2 = (f"DJI Tello drone wifi: {args.ssid}\n "

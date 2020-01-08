@@ -2,7 +2,7 @@ from enum import Enum
 from typing import NamedTuple, Any
 from utils import generate_logger, connect_wifi
 import socket
-from CameraStream import CameraStream
+from camera_stream import CameraStream
 
 
 class Vec3D:

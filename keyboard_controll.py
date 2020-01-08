@@ -2,7 +2,7 @@ import pygame
 from tello import Tello
 from typing import Tuple, Optional
 import logging
-from CameraStream import CameraStream
+from camera_stream import CameraStream
 import cv2
 import numpy as np
 from utils import generate_logger

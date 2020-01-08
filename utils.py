@@ -17,13 +17,13 @@ def generate_logger(name: str = "", level: str = 'info',
         handler = logging.StreamHandler()
         handler.setFormatter(logging.Formatter(format))
         logger.addHandler(handler)
-        logger.setLevel(LOGGING_LEVELS['level'])
+        logger.setLevel(LOGGING_LEVELS[level])
         return logger
     except Exception as e:
         raise Exception(f"Failed to generate logger: {e}")
 
 
-UTIL_LOGGER = generate_logger('util logger')
+UTIL_LOGGER = generate_logger('UtilLogger')
 
 
 def connect_wifi(ssid: str, password: Optional[str] = None) -> bool:
