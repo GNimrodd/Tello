@@ -36,7 +36,7 @@ class CameraStream:
                 if not self.grabbed or not self.video_capture.isOpened():
                     self.stop()
                 else:
-                    (self.grabbed, self.frame) = self.video_capture.read()
+                    self.grabbed, self.frame = self.video_capture.read()
                 if self.show_video:
                     cv2.imshow('tello-cam', self.frame)
                     if not self.running or cv2.waitKey(1) & 0xFF == ord('q'):

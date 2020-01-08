@@ -37,8 +37,7 @@ class DroneController:
     VS_UDP_PORT = 11111
 
     def __init__(self, ssid: str, **kwargs):
-        self.LOGGER.info(f"connecting to {ssid}")
-        connect_wifi(ssid)
+        # connect_wifi(ssid)
         self.udp_address = 'udp://@' + self.VS_UDP_IP + ':' + str(self.VS_UDP_PORT)
         self.armed = False
         self.command_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
@@ -56,7 +55,7 @@ class DroneController:
         self.command_socket.bind(self.LOCAL_ADDRESS)
         self.LOGGER.debug("Arming...")
         self._send_command("command")
-        self.get_battery()
+        # self.get_battery()
         return self
 
     def streamon(self, show_cam=False):
@@ -223,6 +222,7 @@ class DroneController:
         return data
 
     def end(self):
+        self.LOGGER.info("shuting down")
         if self.is_flying:
             self.land()
         if self.is_streaming:
