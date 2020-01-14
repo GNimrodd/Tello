@@ -5,6 +5,8 @@ from typing import Dict, Callable, Any
 from keyboard_controll2 import KeyboardControl
 import logging
 from traitlets.config.loader import Config
+import subprocess
+from utils import generate_logger, UTIL_LOGGER
 
 DRONES = {"Frodo": "TELLO-579043",
           "Sam": "TELLO-578FDA"}
@@ -41,22 +43,37 @@ def get_args():
     return args
 
 
+CALIBRATION_FILE = ""
+UNIDISTORTER_FILE = ""
+LSD_SLAM_APP = ""
+
+main_logger = generate_logger('main')
+
+
 def main():
     args = get_args()
     if args.verbose:
-        logging.root.setLevel(logging.DEBUG)
+        KeyboardControl.LOGGER.setLevel(logging.DEBUG)
+        DroneController.LOGGER.setLevel(logging.DEBUG)
+        main_logger.setLevel(logging.DEBUG)
+        UTIL_LOGGER.setLevel(logging.DEBUG)
+
     drone = DroneController(ssid=args.ssid, **args.defines)
     drone.arm()
+    battery = drone.get_battery()
+    main_logger.debug(battery)
+    if battery < 20:
+        raise ValueError(f"low battery: {battery}")
+    p = None
     try:
         if args.with_camera:
             drone.streamon(show_cam=not args.keyboard)
         if args.lsd_slam:
-            raise NotImplemented("lsd-slam mode not yet implemented")  # TODO: remove once implemented
-            import lsd_slam
-            lsd_slam.run(drone.get_udp_video_address, )
+            p = subprocess.Popen(f"{LSD_SLAM_APP} {drone.udp_address} {CALIBRATION_FILE} {UNIDISTORTER_FILE}")
         if args.keyboard:
             drone.takeoff()
-            KeyboardControl(drone, camera=drone.stream if args.with_camera else None).pass_control()
+            KeyboardControl(drone, camera=drone.stream if args.with_camera else None).pass_control(
+                lambda: False if p is None else p.poll() is not None)
         else:
             config = Config()
             config.banner2 = (f"DJI Tello drone wifi: {args.ssid}\n "
@@ -65,8 +82,13 @@ def main():
                               "To finish the run, exit the IPython shell")
             IPython.start_ipython(argv=[], user_ns={'drone': drone}, config=config)
     finally:
+        if p is not None:
+            p.terminate()
         drone.end()
 
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except OSError as e:
+        print(e)

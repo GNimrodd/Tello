@@ -30,11 +30,10 @@ def connect_wifi(ssid: str, password: Optional[str] = None) -> bool:
     UTIL_LOGGER.debug(f"connecting to {ssid}")
     if sys.platform == 'linux':
         from wireless import Wireless
-        Wireless().connect(ssid=ssid, password=password)
+        return Wireless().connect(ssid=ssid, password=password)
     elif sys.platform == 'win32' or sys.platform == 'cygwin':
         import winwifi
-        winwifi.WinWiFi.connect(ssid)
+        return winwifi.WinWiFi.connect(ssid)
     else:
         UTIL_LOGGER.error(f"Can't auto-connect to wifi on {sys.platform}")
         return False
-    return True

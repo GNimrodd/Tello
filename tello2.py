@@ -37,7 +37,8 @@ class DroneController:
     VS_UDP_PORT = 11111
 
     def __init__(self, ssid: str, **kwargs):
-        # connect_wifi(ssid)
+        if not connect_wifi(ssid):
+            raise OSError(f"Failed to connect to wifi {ssid}")
         self.udp_address = 'udp://@' + self.VS_UDP_IP + ':' + str(self.VS_UDP_PORT)
         self.armed = False
         self.command_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)

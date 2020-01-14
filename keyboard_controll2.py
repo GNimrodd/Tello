@@ -1,6 +1,6 @@
 import pygame
 from tello2 import DroneController
-from typing import Tuple
+from typing import Tuple, Callable
 import logging
 import cv2
 import numpy as np
@@ -34,22 +34,27 @@ class KeyboardControl:
     def __init__(self, drone: DroneController, control_window_size: Tuple[int, int] = (1280, 720),
                  camera: CameraStream = None):
         self.drone = drone
-        self.move_amount = 20
-        self.rotate_amount = 30
+        self.move_amount = 50
+        self.rotate_amount = 45
         self.camera = camera
         self.control_window_size = control_window_size
         self.screen = None
+        self.down_key = None
 
     def __repr__(self):
         return f"<{self.__class__.__name__} for {self.drone}>"
 
-    def pass_control(self):
+    def pass_control(self, exit_check: Callable[[], bool] = lambda: False):
         self.LOGGER.debug("Passing control to keyboard, press 'h' for help")
         pygame.init()
         self.screen = pygame.display.set_mode(self.control_window_size)
         pygame.display.set_caption("DJI Tello Control Window")
         running = True
         while running:
+
+            if exit_check():
+                break
+
             if self.camera is not None:
                 ret, frame = self.camera.get_frames()
                 self.screen.fill([0, 0, 0])
@@ -79,10 +84,10 @@ class KeyboardControl:
                     elif event.key == pygame.K_e:
                         self.drone.rotate.cw(self.rotate_amount)
                         self.LOGGER.debug(f"rotating {self.rotate_amount} clockwise")
-                    elif event.key == pygame.K_LCTRL:
+                    elif event.key == pygame.K_s:
                         self.drone.move.down(self.move_amount)
                         self.LOGGER.debug(f"moving {self.move_amount} down")
-                    elif event.key == pygame.K_LALT:
+                    elif event.key == pygame.K_w:
                         self.drone.move.up(self.move_amount)
                         self.LOGGER.debug(f"moving {self.move_amount} up")
                     elif event.key == pygame.K_ESCAPE:
@@ -97,14 +102,15 @@ class KeyboardControl:
                         print(
                             "Drone is being controlled by keyboard;\n"
                             "\t- Arrow Up:      move forward\n"
-                            "\t- Arrow Down:    move forward\n"
-                            "\t- Arrow Left:    move forward\n"
-                            "\t- Arrow Right:   move forward\n"
-                            "\t- Left Ctrl:     move forward\n"
-                            "\t- Left Alt:      move forward\n"
+                            "\t- Arrow Down:    move backward\n"
+                            "\t- Arrow Left:    move left\n"
+                            "\t- Arrow Right:   move right\n"
+                            "\t- s:             move down\n"
+                            "\t- w:             move up\n"
                             "\t- q:             rotate counter clockwise\n"
                             "\t- e:             rotate clockwise\n"
                         )
+
         pygame.quit()
         cv2.destroyAllWindows()
 
