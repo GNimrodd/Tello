@@ -7,7 +7,7 @@ class LSDSlamSystem:
 
     CALIBRATION_FILE = ""
     UNIDISTORTER_FILE = ""
-    LSD_SLAM_APP = "lsd_slam/lsd_slam"
+    LSD_SLAM_APP = "/home/nimrodd/code/lsd_slam_noros/bin/lsd_slam"
 
     def __init__(self, cam_address):
         self.slam_process = None
@@ -19,7 +19,7 @@ class LSDSlamSystem:
 
     def start(self):
         process_args = [self.LSD_SLAM_APP, self.cam_address]
-        self.LOGGER.debug(f"starting slam procss: {process_args}")
+        self.LOGGER.debug(f"starting slam process: {' '.join(process_args)}")
         self.slam_process = subprocess.Popen(process_args, shell=True)
 
     @property

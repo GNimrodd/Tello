@@ -53,5 +53,6 @@ class CameraStream:
         return img_path
 
     def stop(self):
-        self.running = False
-        self.thread.join()
+        if self.running:
+            self.running = False
+            self.thread.join()

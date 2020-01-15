@@ -31,6 +31,7 @@ def get_args():
     ap.add_argument("--with-camera", default=False, const=True, nargs='?', help="Set True to see the video stream")
     ap.add_argument("--keyboard", default=False, const=True, nargs='?', help="Use keyboard keys to control the drone")
     ap.add_argument("--lsd-slam", default=False, const=True, nargs='?', help="Use lsd-slam")
+    ap.add_argument("--slam-exe", default=None, type=str, help="path of slam executable")
     # ap.add_argument("--cam-calibration", type=str, default=None)
     # ap.add_argument("--unid-calibration", type=str, default=None)
     ap.add_argument("-d", dest='defines', nargs='*')
@@ -60,6 +61,8 @@ class Main:
         self.slam_system = None
         if args.verbose:
             set_logger_to_debug()
+        if args.slam_exe:
+            LSDSlamSystem.LSD_SLAM_APP = args.slam_exe
 
     def _post_init(self):
         self.drone = DroneController(ssid=self.args.ssid, **self.args.defines)
