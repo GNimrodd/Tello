@@ -1,6 +1,9 @@
+import os
+
+os.environ['PYGAME_HIDE_SUPPORT_PROMPT'] = 'hide'
 import pygame
 from tello2 import DroneController
-from typing import Tuple, Callable
+from typing import Tuple, Callable, Optional
 import logging
 import cv2
 import numpy as np
@@ -19,6 +22,11 @@ class MockCam:
     def get_frames(self):
         self.ret, self.frame = self.cap.read()
         return self.ret, self.frame
+
+    def snapshot(self, path: Optional[str] = None) -> str:
+        img_path = path or datetime.now().strftime('%Y%m%d-%H%M%S') + ".jpeg"
+        cv2.imwrite(img_path, self.frame)
+        return img_path
 
     def __repr__(self):
         return f"<{self.__class__.__name__}>"
@@ -95,9 +103,8 @@ class KeyboardControl:
                         self.drone.end()
                         running = False
                     elif event.key == pygame.K_p:
-                        img_path = datetime.now().strftime('%Y%m%d-%H%M%S') + ".jpeg"
+                        img_path = self.camera.snapshot()
                         self.LOGGER.debug(f"printscreen: {img_path}")
-                        cv2.imwrite(img_path, self.camera.frame)
                     elif event.key == pygame.K_h:
                         print(
                             "Drone is being controlled by keyboard;\n"

@@ -1,6 +1,6 @@
 import sys
 import logging
-from typing import Optional
+from typing import Optional, Callable
 
 LOGGING_LEVELS = {
     'info': logging.INFO,
@@ -9,15 +9,24 @@ LOGGING_LEVELS = {
     'error': logging.ERROR,
 }
 
+__generated_loggers__ = {}
+
+
+def set_all_loggers(fn: Callable[[logging.Logger], None]):
+    for _, logger in __generated_loggers__.items():
+        fn(logger)
+
 
 def generate_logger(name: str = "", level: str = 'info',
                     format: str = '%(filename)s - %(lineno)d - %(message)s') -> logging.Logger:
     try:
-        logger = logging.getLogger(name or __file__ + "_logger")
+        name = name or __file__ + "_logger"
+        logger = logging.getLogger(name)
         handler = logging.StreamHandler()
         handler.setFormatter(logging.Formatter(format))
         logger.addHandler(handler)
         logger.setLevel(LOGGING_LEVELS[level])
+        __generated_loggers__[name] = logger
         return logger
     except Exception as e:
         raise Exception(f"Failed to generate logger: {e}")

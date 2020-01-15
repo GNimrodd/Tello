@@ -12,7 +12,7 @@ def main():
     logging.root.setLevel(logging.DEBUG)
     drone = DroneController(ssid=DRONES['Frodo'])
     drone.arm()
-    drone.streamon()
+    drone.capture_stream()
     KeyboardControl(drone, camera=drone.stream).pass_control()
     drone.end()
 

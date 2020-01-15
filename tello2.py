@@ -59,15 +59,22 @@ class DroneController:
         # self.get_battery()
         return self
 
-    def streamon(self, show_cam=False):
-        self.stream.show_video = show_cam
+    def streamon(self):
         if self.is_streaming:
             return
         self.is_streaming = True
         self._send_command("streamon")
+
+    def capture_stream(self, show_cam=False):
+        if not self.is_streaming:
+            self.streamon()
+        self.stream.show_video = show_cam
         self.stream.start()
 
     def streamoff(self):
+        if not self.is_streaming:
+            return
+        self.is_streaming = False
         self._send_command("streamoff")
         self.stream.stop()
 
@@ -184,8 +191,11 @@ class DroneController:
         return int(self._send_command("speed?"))
 
     def get_battery(self) -> int:
-        self.battery = int(self._send_command("battery?"))
-        return self.battery
+        try:
+            self.battery = int(self._send_command("battery?"))
+            return self.battery
+        except ValueError:
+            return 0
 
     def get_time(self) -> int:
         return int(self._send_command("time?"))

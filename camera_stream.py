@@ -1,6 +1,7 @@
 import cv2
 from threading import Thread
-from typing import Any
+from typing import Optional
+from datetime import datetime
 
 
 class CameraStream:
@@ -45,6 +46,11 @@ class CameraStream:
         finally:
             if self.show_video:
                 cv2.destroyAllWindows()
+
+    def snapshot(self, path: Optional[str] = None) -> str:
+        img_path = path or datetime.now().strftime('%Y%m%d-%H%M%S') + ".jpeg"
+        cv2.imwrite(img_path, self.frame)
+        return img_path
 
     def stop(self):
         self.running = False
