@@ -79,9 +79,9 @@ class Main:
                 self.drone.streamon()
                 self.LOGGER.info("initializing slam process")
                 self.slam_system.start()
-                self.LOGGER.info("sleeping for 10 seconds...")
+                self.LOGGER.info("sleeping for 1 minute...")
                 import time
-                time.sleep(10)
+                time.sleep(60)
             else:
                 self.LOGGER.info("taking snapshot")
                 self.drone.capture_stream(False)
