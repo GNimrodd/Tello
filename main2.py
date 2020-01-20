@@ -17,8 +17,13 @@ def set_deinfes(defines) -> Dict[str, Any]:
     defs = {}
     if defines:
         for keyval in defines:
-            k, v = keyval.split('=')
-            defs[k] = v
+            kv = keyval.split('=')
+            if len(kv) == 1:
+                defs[kv] = True
+            elif len(kv) == 2:
+                defs[kv[0]] = kv[1]
+            else:
+                raise argparse.ArgumentError("defines can contain only one =")
     return defs
 
 
@@ -62,7 +67,7 @@ class Main:
         if args.verbose:
             set_logger_to_debug()
         if args.slam_exe:
-            LSDSlamSystem.LSD_SLAM_APP = args.slam_exe
+            LSDSlamSystem.LSD_SLAM_LIVE_APP = args.slam_exe
 
     def _post_init(self):
         self.drone = DroneController(ssid=self.args.ssid, **self.args.defines)
@@ -119,6 +124,8 @@ class Main:
                               "To finish the run, exit the IPython shell")
             IPython.start_ipython(argv=[], user_ns={'drone': self.drone}, config=config)
 
+
+# python3 main2.py --ssid Frodo --keyboard --show-cam --verbose -d capture_frame -d frame_dir=frames -d frame_capture_rate=0.2
 
 if __name__ == "__main__":
     try:

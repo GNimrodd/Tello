@@ -42,7 +42,7 @@ class DroneController:
         self.udp_address = 'udp://@' + self.VS_UDP_IP + ':' + str(self.VS_UDP_PORT)
         self.armed = False
         self.command_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        self.stream = CameraStream(self.udp_address)
+        self.stream = CameraStream(self.udp_address, **kwargs)
         self.battery = 0
         self.is_flying = False
         self.is_streaming = False
