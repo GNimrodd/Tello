@@ -127,6 +127,7 @@ class Main:
 
 # python3 main2.py --ssid Frodo --keyboard --show-cam --verbose -d capture_frame -d frame_dir=frames -d frame_capture_rate=0.2
 
+
 if __name__ == "__main__":
     try:
         Main(get_args()).main()
