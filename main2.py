@@ -71,6 +71,7 @@ class Main:
 
     def _post_init(self):
         self.drone = DroneController(ssid=self.args.ssid, **self.args.defines)
+        self.drone.arm()
         self.slam_system = LSDSlamSystem(self.drone.udp_address)
 
     def run_doa(self):

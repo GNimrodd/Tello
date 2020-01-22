@@ -50,7 +50,7 @@ class CameraStream:
                     self.grabbed, self.frame = self.video_capture.read()
                 if self.capture_frames and capture:
                     capture = False
-                    file_name = f"{self.capture_frame_dir}/{int(current_time)}.jpeg"
+                    file_name = self.snapshot(f"{self.capture_frame_dir}/{int(current_time)}.jpeg")
                     self.frame_data_file.write(f"tag {current_time} {file_name}")
                 if self.show_video:
                     cv2.imshow('tello-cam', self.frame)
