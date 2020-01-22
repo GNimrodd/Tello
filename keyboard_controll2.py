@@ -10,6 +10,7 @@ import numpy as np
 from utils import generate_logger
 from camera_stream import CameraStream
 from datetime import datetime
+import time
 
 
 class MockCam:
@@ -58,8 +59,12 @@ class KeyboardControl:
         self.screen = pygame.display.set_mode(self.control_window_size)
         pygame.display.set_caption("DJI Tello Control Window")
         running = True
+        t = time.time()
         while running:
-
+            s = time.time()
+            if s > t + 5000:
+                t = s
+                self.drone.get_battery()
             if exit_check():
                 break
 
@@ -74,6 +79,9 @@ class KeyboardControl:
 
             for event in pygame.event.get():
                 if event.type == pygame.KEYDOWN:
+                    if event.type == pygame.K_t:
+                        self.drone.takeoff()
+                        self.LOGGER.debug("taking off")
                     if event.key == pygame.K_RIGHT:
                         self.drone.move.right(self.move_amount)
                         self.LOGGER.debug(f"moving {self.move_amount} to the right")
@@ -116,6 +124,7 @@ class KeyboardControl:
                             "\t- w:             move up\n"
                             "\t- q:             rotate counter clockwise\n"
                             "\t- e:             rotate clockwise\n"
+                            "\t- t:             take off"
                         )
 
         pygame.quit()

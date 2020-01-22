@@ -4,6 +4,7 @@ from typing import Optional
 from datetime import datetime
 import time
 
+
 class CameraStream:
 
     def __init__(self, udp_address: str, **kwargs):

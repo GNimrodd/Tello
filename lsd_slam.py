@@ -6,8 +6,8 @@ import logging
 
 LIVE = 0
 OFFLINE = 1
-CALIBRATION_FILE = "/home/nimrodd/code/Tello/lsd_slam/calib.xml"
-UNIDISTORTER_FILE = "/home/nimrodd/code/Tello/lsd_slam/calib.xml"
+CALIBRATION_FILE = "/home/nimrodd/code/Tello/lsd_slam/calib3.xml"
+UNIDISTORTER_FILE = "/home/nimrodd/code/Tello/lsd_slam/calib3.xml"
 LSD_SLAM_LIVE_APP = "/home/nimrodd/code/lsd_slam_noros/bin/sample_app"
 LSD_SLAM_OFFLINE_APP = "/home/nimrodd/code/lsd_slam_noros/bin/main_on_images"
 
@@ -37,7 +37,7 @@ class LSDSlamSystem:
         self.LOGGER.debug(f"slam process pid: {self.slam_process.pid}")
         return self
 
-    @property
+    # @property
     def is_alive(self):
         if self.slam_process is not None:
             return self.slam_process.poll() is None

@@ -106,17 +106,19 @@ class Main:
             self.drone.end()
 
     def run(self):
-        battery = self.drone.get_battery()
-        if battery < 20:
-            raise ValueError(f"low battery: {battery}")
-        if self.args.with_camera:
+        # battery = self.drone.get_battery()
+        # if battery < 20:
+        #     raise ValueError(f"low battery: {battery}")
+        if self.args.with_camera and not self.args.lsd_slam:
             self.drone.capture_stream(show_cam=not self.args.keyboard)
         if self.args.lsd_slam:
+            self.drone.streamon()
             self.slam_system.start()
         if self.args.keyboard:
-            self.drone.takeoff()
+            # KeyboardControl(self.drone, camera=self.drone.stream if self.args.with_camera else None).pass_control(
+            #     (lambda: self.slam_system.is_alive()) if self.slam_system.is_initialized else (lambda: False))
             KeyboardControl(self.drone, camera=self.drone.stream if self.args.with_camera else None).pass_control(
-                (lambda: self.slam_system.is_alive()) if self.slam_system.is_initialized else lambda: False)
+                lambda: False)
         else:
             config = Config()
             config.banner2 = (f"DJI Tello drone wifi: {self.args.ssid}\n "
