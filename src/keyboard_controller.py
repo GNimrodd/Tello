@@ -3,21 +3,16 @@ import os
 os.environ['PYGAME_HIDE_SUPPORT_PROMPT'] = 'hide'
 import pygame
 from tello import DroneController
-from typing import Tuple, Callable, Optional
-import logging
+from typing import Tuple, Callable
 import cv2
-from utils import generate_logger
+from utils import logger_mixin
 from camera_stream import CameraStream
-from datetime import datetime
-import time
 
 
-class KeyboardControl:
+class KeyboardControl(logger_mixin()):
     """
     controlling the drone via keyboard
     """
-
-    LOGGER = generate_logger("KeyboardController")
 
     def __init__(self, drone: DroneController, control_window_size: Tuple[int, int] = (1280, 720),
                  camera: CameraStream = None):
@@ -27,13 +22,12 @@ class KeyboardControl:
         self.camera = camera
         self.control_window_size = control_window_size
         self.screen = None
-        self.down_key = None
 
     def __repr__(self):
         return f"<{self.__class__.__name__} for {self.drone}>"
 
     def pass_control(self, exit_check: Callable[[], bool] = lambda: False):
-        self.LOGGER.debug("Passing control to keyboard, press 'h' for help")
+        self.logger.debug("Passing control to keyboard, press 'h' for help")
         pygame.init()
         self.screen = pygame.display.set_mode(self.control_window_size)
         pygame.display.set_caption("DJI Tello Control Window")
@@ -41,7 +35,7 @@ class KeyboardControl:
         while running:
 
             if exit_check():
-                self.LOGGER.debug("lsd-slam process died, exiting...")
+                self.logger.debug("lsd-slam process died, exiting...")
                 running = False
 
             if self.camera is not None:
@@ -54,44 +48,44 @@ class KeyboardControl:
                     self.screen.blit(frame, (0, 0))
                     pygame.display.update()
                 else:
-                    self.LOGGER.debug("Couldn't get frame to display")
+                    self.logger.error("Couldn't get frame to display")
 
             for event in pygame.event.get():
                 if event.type == pygame.KEYDOWN:
                     if event.type == pygame.K_t:
                         self.drone.takeoff()
-                        self.LOGGER.debug("taking off")
+                        self.logger.debug("taking off")
                     if event.key == pygame.K_RIGHT:
                         self.drone.move.right(self.move_amount)
-                        self.LOGGER.debug(f"moving {self.move_amount} to the right")
+                        self.logger.debug(f"moving {self.move_amount} to the right")
                     elif event.key == pygame.K_LEFT:
                         self.drone.move.left(self.move_amount)
-                        self.LOGGER.debug(f"moving {self.move_amount} to the left")
+                        self.logger.debug(f"moving {self.move_amount} to the left")
                     elif event.key == pygame.K_UP:
                         self.drone.move.forward(self.move_amount)
-                        self.LOGGER.debug(f"moving {self.move_amount} forwards")
+                        self.logger.debug(f"moving {self.move_amount} forwards")
                     elif event.key == pygame.K_DOWN:
                         self.drone.move.back(self.move_amount)
-                        self.LOGGER.debug(f"moving {self.move_amount} backwards")
+                        self.logger.debug(f"moving {self.move_amount} backwards")
                     elif event.key == pygame.K_q:
                         self.drone.rotate.ccw(self.rotate_amount)
-                        self.LOGGER.debug(f"rotating {self.rotate_amount} counter-clockwise")
+                        self.logger.debug(f"rotating {self.rotate_amount} counter-clockwise")
                     elif event.key == pygame.K_e:
                         self.drone.rotate.cw(self.rotate_amount)
-                        self.LOGGER.debug(f"rotating {self.rotate_amount} clockwise")
+                        self.logger.debug(f"rotating {self.rotate_amount} clockwise")
                     elif event.key == pygame.K_s:
                         self.drone.move.down(self.move_amount)
-                        self.LOGGER.debug(f"moving {self.move_amount} down")
+                        self.logger.debug(f"moving {self.move_amount} down")
                     elif event.key == pygame.K_w:
                         self.drone.move.up(self.move_amount)
-                        self.LOGGER.debug(f"moving {self.move_amount} up")
+                        self.logger.debug(f"moving {self.move_amount} up")
                     elif event.key == pygame.K_ESCAPE:
-                        self.LOGGER.debug("Returning control")
+                        self.logger.debug("Returning control")
                         self.drone.end()
                         running = False
                     elif event.key == pygame.K_p:
                         img_path = self.camera.snapshot()
-                        self.LOGGER.debug(f"printscreen: {img_path}")
+                        self.logger.debug(f"printscreen: {img_path}")
                     elif event.key == pygame.K_h:
                         print(
                             "Drone is being controlled by keyboard;\n"

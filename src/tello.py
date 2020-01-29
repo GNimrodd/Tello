@@ -1,6 +1,6 @@
 from enum import Enum
 from typing import NamedTuple, Any
-from utils import generate_logger, connect_wifi
+from utils import logger_mixin, connect_wifi
 import socket
 from camera_stream import CameraStream
 
@@ -23,13 +23,11 @@ class TelloResponse(Enum):
     ERROR = 1
 
 
-class DroneController:
+class DroneController(logger_mixin()):
     """
     A drone representation.
     Saves drone data
     """
-
-    LOGGER = generate_logger("DroneLogger")
 
     TELLO_ADDRESS = ('192.168.10.1', 8889)
     LOCAL_ADDRESS = ('', 9000)
@@ -51,9 +49,9 @@ class DroneController:
 
     def arm(self) -> "DroneController":
         self.armed = True
-        self.LOGGER.debug("Binding sockets")
+        self.logger.debug("Binding sockets")
         self.command_socket.bind(self.LOCAL_ADDRESS)
-        self.LOGGER.debug("Arming...")
+        self.logger.debug("Arming...")
         self._send_command("command")
         return self
 
@@ -66,7 +64,7 @@ class DroneController:
     def capture_stream(self, show_cam=False):
         if not self.is_streaming:
             self.streamon()
-        self.stream.show_video = show_cam
+        self.stream.show_cam = show_cam
         self.stream.start()
 
     def streamoff(self):
@@ -219,21 +217,21 @@ class DroneController:
         return TelloResponse.OK if self._send_command("wifi?") == "ok" else TelloResponse.ERROR
 
     def _send_command(self, cmd: str, timeout: float = 20) -> Any:
-        self.LOGGER.debug(cmd)
+        self.logger.debug(cmd)
         self.command_socket.sendto(cmd.encode(encoding="utf-8"), self.TELLO_ADDRESS)
         data = 0
         try:
             self.command_socket.settimeout(timeout)
             data = self.command_socket.recvfrom(1518)[0].decode(encoding="utf-8")
-            self.LOGGER.debug(data)
+            self.logger.debug(data)
         except socket.timeout as e:
             raise e
         except Exception as e:
-            self.LOGGER.error(e)
+            self.logger.error(e)
         return data
 
     def end(self):
-        self.LOGGER.info("shutting down")
+        self.logger.info("shutting down")
         self.stream.stop()
         if self.is_flying:
             self.land()
