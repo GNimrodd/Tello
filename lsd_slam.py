@@ -3,12 +3,15 @@ import subprocess
 import signal
 import argparse
 import logging
+import sys
+import os
 
 LIVE = 0
 OFFLINE = 1
-CALIBRATION_FILE = "/home/nimrodd/code/Tello/lsd_slam/calib3.xml"
-UNIDISTORTER_FILE = "/home/nimrodd/code/Tello/lsd_slam/calib3.xml"
-LSD_SLAM_LIVE_APP = "/home/nimrodd/code/lsd_slam_noros/bin/sample_app"
+CALIBRATION_FILE = "/home/nimrodd/code/Tello/lsd_slam/calibration.xml"
+UNIDISTORTER_FILE = "/home/nimrodd/code/Tello/lsd_slam/calibration.xml"
+# LSD_SLAM_LIVE_APP = "/home/nimrodd/code/lsd_slam_noros/bin/sample_app"
+LSD_SLAM_LIVE_APP = "/home/nimrodd/code/lsd_slam_noros/bin/live_main"
 LSD_SLAM_OFFLINE_APP = "/home/nimrodd/code/lsd_slam_noros/bin/main_on_images"
 
 
@@ -37,7 +40,6 @@ class LSDSlamSystem:
         self.LOGGER.debug(f"slam process pid: {self.slam_process.pid}")
         return self
 
-    # @property
     def is_alive(self):
         if self.slam_process is not None:
             return self.slam_process.poll() is None
@@ -62,18 +64,18 @@ class LSDSlamSystem:
 
 def get_args():
     ap = argparse.ArgumentParser()
-    ap.add_argument('live', default=False, const=True, nargs='?')
-    ap.add_argument('offline', default=False, const=True, nargs='?')
+    ap.add_argument('-live', default=False, const=True, nargs='?')
+    ap.add_argument('-offline', default=False, const=True, nargs='?')
     ap.add_argument('--calibration', type=str)
     ap.add_argument('-cam', default='')
     ap.add_argument('-frames', default='')
-    ap.add_argument('--verbose', '-v', default=False, const=True, nargs='?')
+    ap.add_argument('--verbose', '-v', default=False, const=Tue, nargs='?')
     args = ap.parse_args()
     if not args.live ^ args.offline:
         raise argparse.ArgumentError("must use one of <live/offline>")
     if args.live and not args.cam:
         raise argparse.ArgumentError("live slam requires a cam")
-    if args.offline and not args.frame:
+    if args.offline and not args.frames:
         raise argparse.ArgumentError("offline slam requires a frame file")
     args.run_type = LIVE if args.live else OFFLINE
     args.input = args.cam if args.live else args.frames

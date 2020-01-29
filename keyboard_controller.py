@@ -2,35 +2,14 @@ import os
 
 os.environ['PYGAME_HIDE_SUPPORT_PROMPT'] = 'hide'
 import pygame
-from tello2 import DroneController
+from tello import DroneController
 from typing import Tuple, Callable, Optional
 import logging
 import cv2
-import numpy as np
 from utils import generate_logger
 from camera_stream import CameraStream
 from datetime import datetime
 import time
-
-
-class MockCam:
-    def __init__(self):
-        self.cap = cv2.VideoCapture(-1)
-        self.ret, self.frame = None, None
-        if not self.cap.isOpened():
-            self.cap.open(-1)
-
-    def get_frames(self):
-        self.ret, self.frame = self.cap.read()
-        return self.ret, self.frame
-
-    def snapshot(self, path: Optional[str] = None) -> str:
-        img_path = path or datetime.now().strftime('%Y%m%d-%H%M%S') + ".jpeg"
-        cv2.imwrite(img_path, self.frame)
-        return img_path
-
-    def __repr__(self):
-        return f"<{self.__class__.__name__}>"
 
 
 class KeyboardControl:
@@ -59,23 +38,23 @@ class KeyboardControl:
         self.screen = pygame.display.set_mode(self.control_window_size)
         pygame.display.set_caption("DJI Tello Control Window")
         running = True
-        t = time.time()
         while running:
-            s = time.time()
-            if s > t + 5000:
-                t = s
-                self.drone.get_battery()
+
             if exit_check():
-                break
+                self.LOGGER.debug("lsd-slam process died, exiting...")
+                running = False
 
             if self.camera is not None:
                 ret, frame = self.camera.get_frames()
-                self.screen.fill([0, 0, 0])
-                frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-                frame = frame.swapaxes(0, 1)
-                frame = pygame.surfarray.make_surface(frame)
-                self.screen.blit(frame, (0, 0))
-                pygame.display.update()
+                if frame is not None:
+                    self.screen.fill([0, 0, 0])
+                    frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+                    frame = frame.swapaxes(0, 1)
+                    frame = pygame.surfarray.make_surface(frame)
+                    self.screen.blit(frame, (0, 0))
+                    pygame.display.update()
+                else:
+                    self.LOGGER.debug("Couldn't get frame to display")
 
             for event in pygame.event.get():
                 if event.type == pygame.KEYDOWN:
@@ -129,12 +108,3 @@ class KeyboardControl:
 
         pygame.quit()
         cv2.destroyAllWindows()
-
-
-if __name__ == "__main__":
-    from mock import MagicMock
-
-    drone = MagicMock()
-    kc = KeyboardControl(drone, camera=MockCam())
-    KeyboardControl.LOGGER.setLevel(logging.DEBUG)
-    kc.pass_control()

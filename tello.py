@@ -1,777 +1,245 @@
-# coding=utf-8
-import logging
+from enum import Enum
+from typing import NamedTuple, Any
+from utils import generate_logger, connect_wifi
 import socket
-import time
-import threading
-import cv2
-from decorators import accepts
-import dataclasses
-from video import BackgroundFrameRead
-import sys
+from camera_stream import CameraStream
 
 
-class Tello:
-    """Python wrapper to interact with the Ryze Tello drone using the official Tello api.
-    Tello API documentation:
-    https://dl-cdn.ryzerobotics.com/downloads/tello/20180910/Tello%20SDK%20Documentation%20EN_1.3.pdf
+class Vec3D:
+    def __init__(self, x=None, y=None, z=None):
+        self.x: int = x
+        self.y: int = y
+        self.z: int = z
+
+
+class IMU(NamedTuple):
+    pitch: int
+    roll: int
+    yaw: int
+
+
+class TelloResponse(Enum):
+    OK = 0
+    ERROR = 1
+
+
+class DroneController:
     """
-    # Send and receive commands, client socket
-    UDP_IP = '192.168.10.1'
-    UDP_PORT = 8889
-    RESPONSE_TIMEOUT = 7  # in seconds
-    TIME_BTW_COMMANDS = 1  # in seconds
-    TIME_BTW_RC_CONTROL_COMMANDS = 0.5  # in seconds
-    RETRY_COUNT = 3
+    A drone representation.
+    Saves drone data
+    """
 
-    HANDLER = logging.StreamHandler()
-    HANDLER.setFormatter(logging.Formatter('%(filename)s - %(lineno)d - %(message)s'))
+    LOGGER = generate_logger("DroneLogger")
 
-    LOGGER = logging.getLogger('djitellopy')
-
-    LOGGER.addHandler(HANDLER)
-    LOGGER.setLevel(logging.INFO)
-    # use logging.getLogger('djitellopy').setLevel(logging.<LEVEL>) in YOUR CODE
-    # to only receive logs of the desired level and higher
-
-    # Video stream, server socket
+    TELLO_ADDRESS = ('192.168.10.1', 8889)
+    LOCAL_ADDRESS = ('', 9000)
     VS_UDP_IP = '0.0.0.0'
     VS_UDP_PORT = 11111
 
-    STATE_UDP_PORT = 8890
-
-    @dataclasses.dataclass
-    class TelloState:
-        pitch: int = -1
-        roll: int = -1
-        yaw: int = -1
-        speed_x: int = -1
-        speed_y: int = -1
-        speed_z: int = -1
-        temperature_lowest: int = -1
-        temperature_highest: int = -1
-        distance_tof: int = -1
-        height: int = -1
-        battery: int = -1
-        barometer: int = -1.0
-        flight_time: int = -1.0
-        acceleration_x: int = -1.0
-        acceleration_y: int = -1.0
-        acceleration_z: int = -1.0
-
-    def __init__(self, host='192.168.10.1', port=8889, client_socket=None, enable_exceptions=True, retry_count=3,
-                 **kwargs):
-        self.address = (host, port)
-        self.response = None
-        self.response_state = None  # to attain the response of the states
-        self.stream_on = False
-        self.enable_exceptions = enable_exceptions
-        self.retry_count = retry_count
-        self.show_video = kwargs.get('show_video', True)
-        self.name = kwargs.get('name', "video_cam")
-        self.state = Tello.TelloState()
-        self.cap = None
-        self.background_frame_read = None
-        self.last_received_command = time.time()
-        self.stream_on = False
+    def __init__(self, ssid: str, **kwargs):
+        if not connect_wifi(ssid):
+            raise OSError(f"Failed to connect to wifi {ssid}")
+        self.udp_address = 'udp://@' + self.VS_UDP_IP + ':' + str(self.VS_UDP_PORT)
+        self.armed = False
+        self.command_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        self.stream = CameraStream(self.udp_address, **kwargs)
         self.is_flying = False
-        self.wireless = None
-        if 'ssid' in kwargs:
-            self.LOGGER.info(f"connecting to {kwargs['ssid']}")
-            if sys.platform == 'linux':
-                from wireless import Wireless
-                self.wireless = Wireless()
-                self.wireless.connect(ssid=kwargs['ssid'], password=None)
-            elif sys.platform == 'win32' or sys.platform == 'cygwin':
-                import winwifi
-                winwifi.WinWiFi.connect(kwargs['ssid'])
-            else:
-                self.LOGGER.error(f"Can't connect automaticaly to {kwargs['ssid']} on {sys.platform}")
+        self.is_streaming = False
 
-        if client_socket:
-            self.clientSocket = client_socket
-        else:
-            self.clientSocket = socket.socket(socket.AF_INET,  # Internet
-                                              socket.SOCK_DGRAM)  # UDP
-            self.clientSocket.bind(('', self.UDP_PORT))  # For UDP response (receiving data)
+    def help(self):
+        print('\n'.join(self.__dict__.keys()))
 
-        self.stateSocket = socket.socket(socket.AF_INET,
-                                         socket.SOCK_DGRAM)
-        self.stateSocket.bind(('', self.STATE_UDP_PORT))  # for accessing the states of Tello
-
-        # if kwargs.get('init_udp_receiver', True):
-        #     self.init_udp_receiver()
-        #
-        # if kwargs.get('init_state_thread', True):
-        #     self.init_state_thread()
-
-    def init_udp_receiver(self):
-        threading.Thread(target=self.run_udp_receiver, args=(), daemon=True).start()
-
-    def init_state_thread(self):
-        threading.Thread(target=self.get_states, args=(), daemon=True).start()
-
-    def run_udp_receiver(self):
-        """Setup drone UDP receiver. This method listens for responses of Tello. Must be run from a background thread
-        in order to not block the main thread."""
-        while True:
-            try:
-                self.response, _ = self.clientSocket.recvfrom(1024)  # buffer size is 1024 bytes
-            except Exception as e:
-                self.LOGGER.error(e)
-                break
-
-    def get_states(self):
-        """This runs on background to recieve the state of Tello"""
-        while True:
-            try:
-                self.response_state, _ = self.stateSocket.recvfrom(256)
-                if self.response_state != 'ok':
-                    self.response_state = self.response_state.decode('ASCII')
-                    list = self.response_state.replace(';', ':').split(':')
-                    self.state.pitch = int(list[1])
-                    self.state.roll = int(list[3])
-                    self.state.yaw = int(list[5])
-                    self.state.speed_x = int(list[7])
-                    self.state.speed_y = int(list[9])
-                    self.state.speed_z = int(list[11])
-                    self.state.temperature_lowest = int(list[13])
-                    self.state.temperature_highest = int(list[15])
-                    self.state.distance_tof = int(list[17])
-                    self.state.height = int(list[19])
-                    self.state.battery = int(list[21])
-                    self.state.barometer = float(list[23])
-                    self.state.flight_time = float(list[25])
-                    self.state.acceleration_x = float(list[27])
-                    self.state.acceleration_y = float(list[29])
-                    self.state.acceleration_z = float(list[31])
-            except Exception as e:
-                self.LOGGER.error(e)
-                self.LOGGER.error(f"Response was is {self.response_state}")
-                break
-
-    @property
-    def get_udp_video_address(self):
-        return 'udp://@' + self.VS_UDP_IP + ':' + str(self.VS_UDP_PORT)  # + '?overrun_nonfatal=1&fifo_size=5000'
-
-    def get_video_capture(self):
-        """Get the VideoCapture object from the camera drone
-        Returns:
-            VideoCapture
-        """
-
-        if self.cap is None:
-            self.cap = cv2.VideoCapture(self.get_udp_video_address)
-
-        if not self.cap.isOpened():
-            self.cap.open(self.get_udp_video_address)
-
-        return self.cap
-
-    def start_video_cam(self, **kwargs):
-        if self.background_frame_read is None:
-            self.background_frame_read = BackgroundFrameRead(self, self.get_udp_video_address, self.show_video,
-                                                             self.name, **kwargs).start()
-
-    def get_frame_read(self):
-        """Get the BackgroundFrameRead object from the camera drone. Then, you just need to call
-        backgroundFrameRead.frame to get the actual frame received by the drone.
-        Returns:
-            BackgroundFrameRead
-        """
-        self.start_video_cam(save_video=f"tello_video_{int(time.time())}.h264")
-        return self.background_frame_read
-
-    def stop_video_capture(self):
-        return self.streamoff()
-
-    @accepts(command=str, printinfo=bool, timeout=int)
-    def send_command_with_return(self, command, printinfo=True, timeout=RESPONSE_TIMEOUT):
-        """Send command to Tello and wait for its response.
-        Return:
-            bool: True for successful, False for unsuccessful
-        """
-        # Commands very consecutive makes the drone not respond to them. So wait at least self.TIME_BTW_COMMANDS seconds
-        diff = time.time() * 1000 - self.last_received_command
-        if diff < self.TIME_BTW_COMMANDS:
-            time.sleep(diff)
-
-        if printinfo:
-            self.LOGGER.info('Send command: ' + command)
-        timestamp = int(time.time() * 1000)
-
-        self.clientSocket.sendto(command.encode('utf-8'), self.address)
-
-        while self.response is None:
-            if (time.time() * 1000) - timestamp > timeout * 1000:
-                self.LOGGER.warning('Timeout exceed on command ' + command)
-                return False
-
-        try:
-            response = self.response.decode('utf-8').rstrip("\r\n")
-        except UnicodeDecodeError as e:
-            self.LOGGER.error(e)
-            return None
-
-        if printinfo:
-            self.LOGGER.info(f'Response {command}: {response}')
-
-        self.response = None
-
-        self.last_received_command = time.time() * 1000
-
-        return response
-
-    @accepts(command=str)
-    def send_command_without_return(self, command):
-        """Send command to Tello without expecting a response. Use this method when you want to send a command
-        continuously
-            - go x y z speed: Tello fly to x y z in speed (cm/s)
-                x: 20-500
-                y: 20-500
-                z: 20-500
-                speed: 10-100
-            - curve x1 y1 z1 x2 y2 z2 speed: Tello fly a curve defined by the current and two given coordinates with
-                speed (cm/s). If the arc radius is not within the range of 0.5-10 meters, it responses false.
-                x/y/z can’t be between -20 – 20 at the same time .
-                x1, x2: 20-500
-                y1, y2: 20-500
-                z1, z2: 20-500
-                speed: 10-60
-            - rc a b c d: Send RC control via four channels.
-                a: left/right (-100~100)
-                b: forward/backward (-100~100)
-                c: up/down (-100~100)
-                d: yaw (-100~100)
-        """
-        # Commands very consecutive makes the drone not respond to them. So wait at least self.TIME_BTW_COMMANDS seconds
-
-        self.LOGGER.info('Send command (no expect response): ' + command)
-        self.clientSocket.sendto(command.encode('utf-8'), self.address)
-
-    @accepts(command=str, timeout=int)
-    def send_control_command(self, command, timeout=RESPONSE_TIMEOUT):
-        """Send control command to Tello and wait for its response. Possible control commands:
-            - command: entry SDK mode
-            - takeoff: Tello auto takeoff
-            - land: Tello auto land
-            - streamon: Set video stream on
-            - streamoff: Set video stream off
-            - emergency: Stop all motors immediately
-            - up x: Tello fly up with distance x cm. x: 20-500
-            - down x: Tello fly down with distance x cm. x: 20-500
-            - left x: Tello fly left with distance x cm. x: 20-500
-            - right x: Tello fly right with distance x cm. x: 20-500
-            - forward x: Tello fly forward with distance x cm. x: 20-500
-            - back x: Tello fly back with distance x cm. x: 20-500
-            - cw x: Tello rotate x degree clockwise x: 1-3600
-            - ccw x: Tello rotate x degree counter- clockwise. x: 1-3600
-            - flip x: Tello fly flip x
-                l (left)
-                r (right)
-                f (forward)
-                b (back)
-            - speed x: set speed to x cm/s. x: 10-100
-            - wifi ssid pass: Set Wi-Fi with SSID password
-
-        Return:
-            bool: True for successful, False for unsuccessful
-        """
-        self.send_command_without_return(command)
-        # response = None
-        # for i in range(0, self.retry_count):
-        #     response = self.send_command_with_return(command, timeout=timeout)
-        #
-        #     if response == 'OK' or response == 'ok':
-        #         return True
-        #
-        # return self.return_error_on_send_command(command, response, self.enable_exceptions)
-
-    @accepts(command=str, printinfo=bool)
-    def send_read_command(self, command, printinfo=True):
-        """Send set command to Tello and wait for its response. Possible set commands:
-            - speed?: get current speed (cm/s): x: 1-100
-            - battery?: get current battery percentage: x: 0-100
-            - time?: get current fly time (s): time
-            - height?: get height (cm): x: 0-3000
-            - temp?: get temperature (°C): x: 0-90
-            - attitude?: get IMU attitude data: pitch roll yaw
-            - baro?: get barometer value (m): x
-            - tof?: get distance value from TOF (cm): x: 30-1000
-            - wifi?: get Wi-Fi SNR: snr
-
-        Return:
-            bool: The requested value for successful, False for unsuccessful
-        """
-
-        response = self.send_command_with_return(command, printinfo=printinfo)
-
-        try:
-            response = str(response)
-        except TypeError as e:
-            self.LOGGER.error(e)
-            pass
-
-        if ('error' not in response) and ('ERROR' not in response) and ('False' not in response):
-            if response.isdigit():
-                return int(response)
-            else:
-                try:
-                    return float(response)  # isdigit() is False when the number is a float(barometer)
-                except ValueError:
-                    return response
-        else:
-            return self.return_error_on_send_command(command, response, self.enable_exceptions)
-
-    def return_error_on_send_command(self, command, response, enable_exceptions):
-        """Returns False and print an informative result code to show unsuccessful response"""
-        msg = 'Command ' + command + ' was unsuccessful. Message: ' + str(response)
-        if enable_exceptions:
-            raise Exception(msg)
-        else:
-            self.LOGGER.error(msg)
-            return False
-
-    def connect(self):
-        """Entry SDK mode
-        Returns:
-            bool: True for successful, False for unsuccessful
-        """
-        return self.send_control_command("command")
-
-    def takeoff(self):
-        """Tello auto takeoff
-        Returns:
-            bool: True for successful, False for unsuccessful
-            False: Unsuccessful
-        """
-        # Something it takes a looooot of time to take off and return a succesful take off. So we better wait. If not, is going to give us error on the following calls.
-        if self.send_control_command("takeoff", timeout=20):
-            self.is_flying = True
-            return True
-        else:
-            return False
-
-    def land(self):
-        """Tello auto land
-        Returns:
-            bool: True for successful, False for unsuccessful
-        """
-        if self.send_control_command("land"):
-            self.is_flying = False
-            return True
-        else:
-            return False
+    def arm(self) -> "DroneController":
+        self.armed = True
+        self.LOGGER.debug("Binding sockets")
+        self.command_socket.bind(self.LOCAL_ADDRESS)
+        self.LOGGER.debug("Arming...")
+        self._send_command("command")
+        return self
 
     def streamon(self):
-        """Set video stream on. If the response is 'Unknown command' means you have to update the Tello firmware. That
-        can be done through the Tello app.
-        Returns:
-            bool: True for successful, False for unsuccessful
-        """
-        result = self.send_control_command("streamon")
-        if result is True:
-            self.stream_on = True
-        return result
+        if self.is_streaming:
+            return
+        self.is_streaming = True
+        self._send_command("streamon")
+
+    def capture_stream(self, show_cam=False):
+        if not self.is_streaming:
+            self.streamon()
+        self.stream.show_video = show_cam
+        self.stream.start()
 
     def streamoff(self):
-        """Set video stream off
-        Returns:
-            bool: True for successful, False for unsuccessful
-        """
-        result = self.send_control_command("streamoff")
-        if result is True:
-            self.stream_on = False
-        return result
+        if not self.is_streaming:
+            return
+        self.is_streaming = False
+        self._send_command("streamoff")
+        self.stream.stop()
+
+    def shutdown(self):
+        self.command_socket.close()
+
+    def takeoff(self):
+        if self.is_flying:
+            return
+        self.is_flying = True
+        self._send_command("takeoff")
+
+    def land(self):
+        self._send_command("land")
 
     def emergency(self):
-        """Stop all motors immediately
-        Returns:
-            bool: True for successful, False for unsuccessful
-        """
-        return self.send_control_command("emergency")
+        self._send_command("emergency")
 
-    @accepts(direction=str, x=int)
-    def move(self, direction, x):
-        """Tello fly up, down, left, right, forward or back with distance x cm.
-        Arguments:
-            direction: up, down, left, right, forward or back
-            x: 20-500
+    class MoveControl:
+        def __init__(self, drone: "DroneController"):
+            self.drone = drone
 
-        Returns:
-            bool: True for successful, False for unsuccessful
-        """
-        return self.send_control_command(direction + ' ' + str(x))
+        def up(self, x: int):
+            if x < 20 or x > 500:
+                raise ValueError(f"Illegal value: {x}")
+            self.drone._send_command(f"up {x}")
 
-    @accepts(x=int)
-    def move_up(self, x):
-        """Tello fly up with distance x cm.
-        Arguments:
-            x: 20-500
+        def down(self, x: int):
+            if x < 20 or x > 500:
+                raise ValueError(f"Illegal value: {x}")
+            self.drone._send_command(f"down {x}")
 
-        Returns:
-            bool: True for successful, False for unsuccessful
-        """
-        return self.move("up", x)
+        def left(self, x: int):
+            if x < 20 or x > 500:
+                raise ValueError(f"Illegal value: {x}")
+            self.drone._send_command(f"left {x}")
 
-    @accepts(x=int)
-    def move_down(self, x):
-        """Tello fly down with distance x cm.
-        Arguments:
-            x: 20-500
+        def right(self, x: int):
+            if x < 20 or x > 500:
+                raise ValueError(f"Illegal value: {x}")
+            self.drone._send_command(f"right {x}")
 
-        Returns:
-            bool: True for successful, False for unsuccessful
-        """
-        return self.move("down", x)
+        def forward(self, x: int):
+            if x < 20 or x > 500:
+                raise ValueError(f"Illegal value: {x}")
+            self.drone._send_command(f"forward {x}")
 
-    @accepts(x=int)
-    def move_left(self, x):
-        """Tello fly left with distance x cm.
-        Arguments:
-            x: 20-500
+        def back(self, x: int):
+            if x < 20 or x > 500:
+                raise ValueError(f"Illegal value: {x}")
+            self.drone._send_command(f"back {x}")
 
-        Returns:
-            bool: True for successful, False for unsuccessful
-        """
-        return self.move("left", x)
+    @property
+    def move(self):
+        return DroneController.MoveControl(self)
 
-    @accepts(x=int)
-    def move_right(self, x):
-        """Tello fly right with distance x cm.
-        Arguments:
-            x: 20-500
+    class RotateControl:
+        def __init__(self, drone: "DroneController"):
+            self.drone = drone
 
-        Returns:
-            bool: True for successful, False for unsuccessful
-        """
-        return self.move("right", x)
+        def cw(self, x: int):
+            if x < 1 or x > 3600:
+                raise ValueError(f"Illegal value: {x}")
+            self.drone._send_command(f"cw {x}")
 
-    @accepts(x=int)
-    def move_forward(self, x):
-        """Tello fly forward with distance x cm.
-        Arguments:
-            x: 20-500
+        def ccw(self, x: int):
+            if x < 1 or x > 3600:
+                raise ValueError(f"Illegal value: {x}")
+            self.drone._send_command(f"ccw {x}")
 
-        Returns:
-            bool: True for successful, False for unsuccessful
-        """
-        return self.move("forward", x)
+    @property
+    def rotate(self):
+        return DroneController.RotateControl(self)
 
-    @accepts(x=int)
-    def move_back(self, x):
-        """Tello fly back with distance x cm.
-        Arguments:
-            x: 20-500
+    class FlipControl:
+        def __init__(self, drone: "DroneController"):
+            self.drone = drone
 
-        Returns:
-            bool: True for successful, False for unsuccessful
-        """
-        return self.move("back", x)
+        def back(self):
+            self._flip('b')
 
-    @accepts(x=int)
-    def rotate_clockwise(self, x):
-        """Tello rotate x degree clockwise.
-        Arguments:
-            x: 1-360
+        def right(self):
+            self._flip('r')
 
-        Returns:
-            bool: True for successful, False for unsuccessful
-        """
-        return self.send_control_command("cw " + str(x))
+        def left(self):
+            self._flip('l')
 
-    @accepts(x=int)
-    def rotate_counter_clockwise(self, x):
-        """Tello rotate x degree counter-clockwise.
-        Arguments:
-            x: 1-3600
+        def forward(self):
+            self._flip('f')
 
-        Returns:
-            bool: True for successful, False for unsuccessful
-        """
-        return self.send_control_command("ccw " + str(x))
+        def _flip(self, direction: str):
+            self.drone._send_command(f"flip {direction}")
 
-    @accepts(x=str)
-    def flip(self, direction):
-        """Tello fly flip.
-        Arguments:
-            direction: l (left), r (right), f (forward) or b (back)
+    @property
+    def flip(self):
+        return DroneController.FlipControl(self)
 
-        Returns:
-            bool: True for successful, False for unsuccessful
-        """
-        return self.send_control_command("flip " + direction)
+    def go(self, p: Vec3D, speed: int):
+        self._send_command(f"go {p.x} {p.y} {p.z} {speed}")
 
-    def flip_left(self):
-        """Tello fly flip left.
-        Returns:
-            bool: True for successful, False for unsuccessful
-        """
-        return self.flip("l")
+    def curve(self, p1: Vec3D, p2: Vec3D, speed: int):
+        self._send_command(f"curve {p1.x} {p2.x} {p1.y} {p2.y} {p1.z} {p2.z} {speed}")
 
-    def flip_right(self):
-        """Tello fly flip left.
-        Returns:
-            bool: True for successful, False for unsuccessful
-        """
-        return self.flip("r")
+    def set_speed(self, x: int):
+        self._send_command(f"speed {x}")
 
-    def flip_forward(self):
-        """Tello fly flip left.
-        Returns:
-            bool: True for successful, False for unsuccessful
-        """
-        return self.flip("f")
+    def set_rc(self, left_right: int, forward_backward: int, up_down: int, yaw: int):
+        self._send_command(f"rc {left_right} {forward_backward} {up_down} {yaw}")
 
-    def flip_back(self):
-        """Tello fly flip left.
-        Returns:
-            bool: True for successful, False for unsuccessful
-        """
-        return self.flip("b")
+    def set_wifi_ssid(self, ssid: int, password: str):
+        self._send_command(f"wifi {ssid} {password}")
 
-    @accepts(x=int, y=int, z=int, speed=int)
-    def go_xyz_speed(self, x, y, z, speed):
-        """Tello fly to x y z in speed (cm/s)
-        Arguments:
-            x: 20-500
-            y: 20-500
-            z: 20-500
-            speed: 10-100
-        Returns:
-            bool: True for successful, False for unsuccessful
-        """
-        return self.send_command_without_return('go %s %s %s %s' % (x, y, z, speed))
+    def get_speed(self) -> int:
+        return int(self._send_command("speed?"))
 
-    @accepts(x1=int, y1=int, z1=int, x2=int, y2=int, z2=int, speed=int)
-    def curve_xyz_speed(self, x1, y1, z1, x2, y2, z2, speed):
-        """Tello fly a curve defined by the current and two given coordinates with speed (cm/s).
-            - If the arc radius is not within the range of 0.5-10 meters, it responses false.
-            - x/y/z can’t be between -20 – 20 at the same time.
-        Arguments:
-            x1: 20-500
-            x2: 20-500
-            y1: 20-500
-            y2: 20-500
-            z1: 20-500
-            z2: 20-500
-            speed: 10-60
-        Returns:
-            bool: True for successful, False for unsuccessful
-        """
-        return self.send_command_without_return('curve %s %s %s %s %s %s %s' % (x1, y1, z1, x2, y2, z2, speed))
+    def get_battery(self) -> int:
+        try:
+            return int(self._send_command("battery?"))
+        except ValueError:
+            return 0
 
-    @accepts(x=int, y=int, z=int, speed=int, mid=int)
-    def go_xyz_speed_mid(self, x, y, z, speed, mid):
-        """Tello fly to x y z in speed (cm/s) relative to mission pad iwth id mid
-        Arguments:
-            x: -500-500
-            y: -500-500
-            z: -500-500
-            speed: 10-100
-            mid: 1-8
-        Returns:
-            bool: True for successful, False for unsuccessful
-        """
-        return self.send_control_command('go %s %s %s %s m%s' % (x, y, z, speed, mid))
+    def get_time(self) -> int:
+        return int(self._send_command("time?"))
 
-    @accepts(x1=int, y1=int, z1=int, x2=int, y2=int, z2=int, speed=int, mid=int)
-    def curve_xyz_speed_mid(self, x1, y1, z1, x2, y2, z2, speed, mid):
-        """Tello fly to x2 y2 z2 over x1 y1 z1 in speed (cm/s) relative to mission pad with id mid
-        Arguments:
-            x1: -500-500
-            y1: -500-500
-            z1: -500-500
-            x2: -500-500
-            y2: -500-500
-            z2: -500-500
-            speed: 10-60
-            mid: 1-8
-        Returns:
-            bool: True for successful, False for unsuccessful
-        """
-        return self.send_control_command('curve %s %s %s %s %s %s %s m%s' % (x1, y1, z1, x2, y2, z2, speed, mid))
+    def get_height(self) -> int:
+        return int(self._send_command("height?"))
 
-    @accepts(x=int, y=int, z=int, speed=int, yaw=int, mid1=int, mid2=int)
-    def go_xyz_speed_yaw_mid(self, x, y, z, speed, yaw, mid1, mid2):
-        """Tello fly to x y z in speed (cm/s) relative to mid1
-        Then fly to 0 0 z over mid2 and rotate to yaw relative to mid2's rotation
-        Arguments:
-            x: -500-500
-            y: -500-500
-            z: -500-500
-            speed: 10-100
-            yaw: -360-360
-            mid1: 1-8
-            mid2: 1-8
-        Returns:
-            bool: True for successful, False for unsuccessful
-        """
-        return self.send_control_command('jump %s %s %s %s %s m%s m%s' % (x, y, z, speed, yaw, mid1, mid2))
+    def get_temp(self) -> int:
+        return int(self._send_command("temp?"))
 
-    def enable_mission_pads(self):
-        return self.send_control_command("mon")
+    def get_attitude(self) -> IMU:
+        return IMU(int(x) for x in self._send_command("attitude?").split())
 
-    def disable_mission_pads(self):
-        return self.send_control_command("moff")
+    def get_barometric(self) -> int:
+        return int(self._send_command("baro?"))
 
-    def set_mission_pad_detection_direction(self, x):
-        return self.send_control_command("mdirection " + str(x))
+    def get_acceleration(self) -> Vec3D:
+        return Vec3D(int(x) for x in self._send_command("acceleration?").split())
 
-    @accepts(x=int)
-    def set_speed(self, x):
-        """Set speed to x cm/s.
-        Arguments:
-            x: 10-100
+    def get_tof(self) -> int:
+        return self._send_command("tof?")
 
-        Returns:
-            bool: True for successful, False for unsuccessful
-        """
-        return self.send_control_command("speed " + str(x))
+    def get_wifi(self) -> TelloResponse:
+        return TelloResponse.OK if self._send_command("wifi?") == "ok" else TelloResponse.ERROR
 
-    last_rc_control_sent = 0
-
-    @accepts(left_right_velocity=int, forward_backward_velocity=int, up_down_velocity=int, yaw_velocity=int)
-    def send_rc_control(self, left_right_velocity, forward_backward_velocity, up_down_velocity, yaw_velocity):
-        """Send RC control via four channels. Command is sent every self.TIME_BTW_RC_CONTROL_COMMANDS seconds.
-        Arguments:
-            left_right_velocity: -100~100 (left/right)
-            forward_backward_velocity: -100~100 (forward/backward)
-            up_down_velocity: -100~100 (up/down)
-            yaw_velocity: -100~100 (yaw)
-        Returns:
-            bool: True for successful, False for unsuccessful
-        """
-        if int(time.time() * 1000) - self.last_rc_control_sent < self.TIME_BTW_RC_CONTROL_COMMANDS:
-            pass
-        else:
-            self.last_rc_control_sent = int(time.time() * 1000)
-            return self.send_command_without_return('rc %s %s %s %s' % (self.round_to_100(left_right_velocity),
-                                                                        self.round_to_100(forward_backward_velocity),
-                                                                        self.round_to_100(up_down_velocity),
-                                                                        self.round_to_100(yaw_velocity)))
-
-    @accepts(x=int)
-    def round_to_100(self, x):
-        if x > 100:
-            return 100
-        elif x < -100:
-            return -100
-        else:
-            return x
-
-    def set_wifi_credentials(self, ssid, password):
-        """Set the Wi-Fi SSID and password. The Tello will reboot afterwords.
-        Returns:
-            bool: True for successful, False for unsuccessful
-        """
-        return self.send_control_command('wifi %s %s' % (ssid, password))
-
-    def connect_to_wifi(self, ssid, password):
-        """Connects to the Wi-Fi with SSID and password.
-        Returns:
-            bool: True for successful, False for unsuccessful
-        """
-        return self.send_control_command('ap %s %s' % (ssid, password))
-
-    def get_speed(self):
-        """Get current speed (cm/s)
-        Returns:
-            False: Unsuccessful
-            int: 1-100
-        """
-        return self.send_read_command('speed?')
-
-    def get_battery(self):
-        """Get current battery percentage
-        Returns:
-            False: Unsuccessful
-            int: -100
-        """
-        return self.send_read_command('battery?')
-
-    def get_flight_time(self):
-        """Get current fly time (s)
-        Returns:
-            False: Unsuccessful
-            int: Seconds elapsed during flight.
-        """
-        return self.send_read_command('time?')
-
-    def get_height(self):
-        """Get height (cm)
-        Returns:
-            False: Unsuccessful
-            int: 0-3000
-        """
-        return self.send_read_command('height?')
-
-    def get_temperature(self):
-        """Get temperature (°C)
-        Returns:
-            False: Unsuccessful
-            int: 0-90
-        """
-        return self.send_read_command('temp?')
-
-    def get_attitude(self):
-        """Get IMU attitude data
-        Returns:
-            False: Unsuccessful
-            int: pitch roll yaw
-        """
-        r = self.send_read_command('attitude?').replace(';', ':').split(':')
-        return dict(zip(r[::2], [int(i) for i in r[1::2]]))  # {'pitch': xxx, 'roll': xxx, 'yaw': xxx}
-
-    def get_barometer(self):
-        """Get barometer value (m)
-        Returns:
-            False: Unsuccessful
-            int: 0-100
-        """
-        return self.send_read_command('baro?')
-
-    def get_distance_tof(self):
-        """Get distance value from TOF (cm)
-        Returns:
-            False: Unsuccessful
-            int: 30-1000
-        """
-        return self.send_read_command('tof?')
-
-    def get_wifi(self):
-        """Get Wi-Fi SNR
-        Returns:
-            False: Unsuccessful
-            str: snr
-        """
-        return self.send_read_command('wifi?')
-
-    def get_sdk_version(self):
-        """Get SDK Version
-        Returns:
-            False: Unsuccessful
-            str: SDK Version
-        """
-        return self.send_read_command('sdk?')
-
-    def get_serial_number(self):
-        """Get Serial Number
-        Returns:
-            False: Unsuccessful
-            str: Serial Number
-        """
-        return self.send_read_command('sn?')
+    def _send_command(self, cmd: str, timeout: float = 20) -> Any:
+        self.LOGGER.debug(cmd)
+        self.command_socket.sendto(cmd.encode(encoding="utf-8"), self.TELLO_ADDRESS)
+        data = 0
+        try:
+            self.command_socket.settimeout(timeout)
+            data = self.command_socket.recvfrom(1518)[0].decode(encoding="utf-8")
+            self.LOGGER.debug(data)
+        except socket.timeout as e:
+            raise e
+        except Exception as e:
+            self.LOGGER.error(e)
+        return data
 
     def end(self):
-        """Call this method when you want to end the tello object"""
+        self.LOGGER.info("shutting down")
+        self.stream.stop()
         if self.is_flying:
             self.land()
-        if self.stream_on:
+        if self.is_streaming:
             self.streamoff()
-        if self.background_frame_read is not None:
-            self.background_frame_read.stop()
-        if self.cap is not None:
-            self.cap.release()
 
-    def __del__(self):
-        self.end()
+    def __repr__(self):
+        return (f"<{self.__class__.__name__}: address={self.udp_address} armed={self.armed} "
+                f"flying={self.is_flying}>")

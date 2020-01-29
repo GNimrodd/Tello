@@ -3,6 +3,8 @@ from threading import Thread
 from typing import Optional
 from datetime import datetime
 import time
+import os
+from getpass import getuser
 
 
 class CameraStream:
@@ -13,8 +15,7 @@ class CameraStream:
         self.video_capture = cv2.VideoCapture(udp_address)
         self.capture_frames = kwargs.get('capture_frames', False)  # flag: save the captured frames
         self.capture_frame_dir = kwargs.get('frame_dir', 'frames')  # path to dir where frames are saved
-        self.capture_rate = kwargs.get('frame_capture_rate', 0.2) * 1000  # capture every `capture_rate` seconds
-        self.frame_data_file = open(f"{self.capture_frame_dir}/frame_data.txt", 'w') if self.capture_frames else None
+        self.capture_rate = float(kwargs.get('frame_capture_rate', 0.1))  # capture every `capture_rate` seconds
         self.running = False
         self.grabbed = None
         self.frame = None
@@ -38,31 +39,30 @@ class CameraStream:
 
     def update_frame(self):
         try:
-            previous_time = time.time()
-            capture = True
-            while self.running:
-                current_time = time.time()
-                if current_time > previous_time + 3000:
-                    previous_time = current_time
-                    capture = True
-                if not self.grabbed or not self.video_capture.isOpened():
-                    self.stop()
-                else:
-                    self.grabbed, self.frame = self.video_capture.read()
-                if self.capture_frames and capture:
-                    capture = False
-                    file_name = self.snapshot(f"{self.capture_frame_dir}/{int(current_time)}.jpeg")
-                    self.frame_data_file.write(f"tag {current_time} {file_name}")
-                if self.show_video:
-                    cv2.imshow('tello-cam', self.frame)
-                    if not self.running or cv2.waitKey(1) & 0xFF == ord('q'):
+            with open(f"{self.capture_frame_dir}/frame_list_{getuser()}_{int(time.time())}.txt", 'w') as frame_data_file:
+                previous_time = time.time()
+                need_capture = True
+                while self.running:
+                    current_time = time.time()
+                    if current_time > previous_time + self.capture_rate:
+                        previous_time = current_time
+                        need_capture = True
+                    if not self.grabbed or not self.video_capture.isOpened():
                         self.stop()
-                        cv2.destroyAllWindows()
+                    else:
+                        self.grabbed, self.frame = self.video_capture.read()
+                    if self.capture_frames and need_capture:
+                        need_capture = False
+                        file_name = self.snapshot(f"{self.capture_frame_dir}/{int(current_time*1000)}.jpeg")
+                        frame_data_file.write(f"{current_time} {os.path.abspath(file_name)}\n")
+                    if self.show_video:
+                        cv2.imshow('tello-cam', self.frame)
+                        if not self.running or cv2.waitKey(1) & 0xFF == ord('q'):
+                            self.stop()
+                            cv2.destroyAllWindows()
         finally:
             if self.show_video:
                 cv2.destroyAllWindows()
-            if self.frame_data_file:
-                self.frame_data_file.close()
 
     def snapshot(self, path: Optional[str] = None) -> str:
         img_path = path or datetime.now().strftime('%Y%m%d-%H%M%S') + ".jpeg"

@@ -1,12 +1,14 @@
 import sys
 import logging
 from typing import Optional, Callable
+from argparse import ArgumentParser
 
 LOGGING_LEVELS = {
     'info': logging.INFO,
     'debug': logging.DEBUG,
     'warning': logging.WARNING,
     'error': logging.ERROR,
+    'critical': logging.CRITICAL,
 }
 
 __generated_loggers__ = {}

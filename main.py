@@ -1,73 +1,126 @@
-import IPython
 import argparse
-from tello import Tello
+from tello import DroneController
 from typing import Dict, Callable, Any
-from controller import Move, Rotate
-from keyboard_controll import KeyboardControl
+from keyboard_controller import KeyboardControl
 import logging
-from traitlets.config.loader import Config
+from utils import generate_logger, set_all_loggers
+from lsd_slam import LSDSlamSystem
 
-Frodo = "TELLO-579043"
-Sam = "TELLO-578FDA"
-
-
-def bind_drone(drone: Tello) -> Dict[str, Callable[[Any], Any]]:
-    return {'move': Move(drone),
-            'rotate': Rotate(drone),
-            'takeoff': drone.takeoff,
-            'land': drone.land,
-            'streamon': drone.streamon,
-            'streamoff': drone.streamoff,
-            'keyboard': KeyboardControl(drone),
-            'drone': drone}
+DRONES = {"Frodo": "TELLO-579043",
+          "Sam": "TELLO-578FDA"}
 
 
+def set_deinfes(defines) -> Dict[str, Any]:
+    defs = {}
+    for keyval in defines:
+        kv = keyval.split('=')
+        if len(kv) == 1:
+            Main.LOGGER.debug(f"setting {kv[0]} to True")
+            defs[kv[0]] = True
+        elif len(kv) == 2:
+            Main.LOGGER.debug(f"setting {kv[0]} to {kv[1]}")
+            defs[kv[0]] = kv[1]
+        else:
+            raise argparse.ArgumentError("defines can contain only one =")
+    return defs
+
+
+# python3 main.py --ssid Frodo -v --with-camera --keyboard
 def get_args():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--ssid", type=str, default=None)
+    ap.add_argument("--ssid", type=str)
+    ap.add_argument("--doa-check", default=False, const=True, nargs="?", help="connect to drone, get battery and exit")
     ap.add_argument("--verbose", "-v", default=False, const=True, nargs='?', help="run with debug print")
     ap.add_argument("--with-camera", default=False, const=True, nargs='?', help="Set True to see the video stream")
-    ap.add_argument("--capture_video", type=str, default=None, help="Pass a file-path for the video")
     ap.add_argument("--keyboard", default=False, const=True, nargs='?', help="Use keyboard keys to control the drone")
     ap.add_argument("--lsd-slam", default=False, const=True, nargs='?', help="Use lsd-slam")
-    ap.add_argument("--cam-calibration", type=str, default=None)
-    ap.add_argument("--unid-calibration", type=str, default=None)
+    ap.add_argument("--slam-exe", default=None, type=str, help="path of slam executable")
+    # ap.add_argument("--cam-calibration", type=str, default=None)
+    # ap.add_argument("--unid-calibration", type=str, default=None)
+    ap.add_argument("-d", dest='defines', nargs='*')
     args = ap.parse_args()
-    if args.lsd_slam:
-        if args.cam_calibration is None or args.unid_calibration is None:
-            raise ValueError("lsd-slam mode requires cam-calibration and unidistorder calibration files:\n"
-                             "main.py --lsd-slam --cam-calibration <path1> --unid-calibration<path2>")
+    # if args.lsd_slam:
+    #     if args.cam_calibration is None or args.unid_calibration is None:
+    #         raise ValueError("lsd-slam mode requires cam-calibration and unidistorder calibration files:\n"
+    #                          "main.py --lsd-slam --cam-calibration <path1> --unid-calibration<path2>")
+    args.ssid = DRONES.get(args.ssid, args.ssid)
+    if args.doa_check:
+        args.verbose = True
+    args.defines = set_deinfes(args.defines)
+
     return args
 
 
-def main():
-    args = get_args()
-    if args.verbose:
-        Tello.LOGGER.setLevel(logging.DEBUG)
-        KeyboardControl.LOGGER.setLevel(logging.DEBUG)
-    drone = Tello(show_video=args.with_camera, ssid=args.ssid)
-    drone.connect()
-    try:
-        drone.streamon()
-        if args.lsd_slam:
-            raise NotImplemented("lsd-slam mode not yet implemented")  # TODO: remove once implemented
-            import lsd_slam
-            lsd_slam.run(drone.get_udp_video_address, )
-        elif args.capture_video or args.with_camera:
-            drone.start_video_cam(save_video=args.capture_video)
-        if args.keyboard:
-            drone.takeoff()
-            KeyboardControl(drone, (1000, 1000)).pass_control()
-        else:
-            config = Config()
-            config.banner2 = (f"DJI Tello drone wifi: {args.ssid}\n "
-                              "Use move, rotate, takeoff or land\n"
-                              "For advanced options, use `drone`\n"
-                              "To finish the run, exit the IPython shell")
-            IPython.start_ipython(argv=[], user_ns=bind_drone(drone), config=config)
-    finally:
-        drone.end()
+def set_logger_to_debug():
+    set_all_loggers(lambda l: l.setLevel(logging.DEBUG))
+
+
+class Main:
+    LOGGER = generate_logger('main')
+
+    def __init__(self, args: argparse.Namespace):
+        self.args = args
+        self.drone = None
+        self.slam_system = None
+        if args.verbose:
+            set_logger_to_debug()
+        if args.slam_exe:
+            LSDSlamSystem.LSD_SLAM_LIVE_APP = args.slam_exe
+
+    def _post_init(self):
+        self.drone = DroneController(ssid=self.args.ssid, **self.args.defines)
+        self.drone.arm()
+        self.slam_system = LSDSlamSystem(self.drone.udp_address)
+
+    def run_doa(self):
+        try:
+            self.LOGGER.info(f"running dead-or-alive checks for {self.args.ssid}")
+            self.drone.arm()
+            self.LOGGER.info(self.drone.get_battery())
+            if self.args.lsd_slam:
+                self.LOGGER.info("testing slam system")
+                self.LOGGER.info("Initializing drone stream")
+                self.drone.streamon()
+                self.LOGGER.info("initializing slam process")
+                self.slam_system.start()
+                self.LOGGER.info("sleeping for 1 minute...")
+                import time
+                time.sleep(60)
+            else:
+                self.LOGGER.info("taking snapshot")
+                self.drone.capture_stream(False)
+                self.drone.stream.snapshot()
+        except Exception:
+            self.LOGGER.error("dead-or-alive failed")
+            raise
+        self.LOGGER.info("dead-or-alive passed")
+
+    def main(self):
+        self._post_init()
+        try:
+            self.run_doa() if self.args.doa_check else self.run()
+        finally:
+            self.slam_system.terminate()
+            self.drone.end()
+
+    def run(self):
+        show_video = self.args.with_camera and not self.args.lsd_slam
+        if show_video:
+            self.drone.capture_stream(show_cam=False)
+        if self.args.lsd_slam:
+            self.drone.streamon()
+            self.slam_system.start()
+        KeyboardControl(self.drone, camera=self.drone.stream if show_video else None).pass_control(
+            (lambda: not self.slam_system.is_alive()) if self.slam_system.is_initialized else (lambda: False))
+
+
+# python3 main.py --ssid Frodo --keyboard --with-camera --verbose -d capture_frame frame_dir=frames rame_capture_rate=0.2
 
 
 if __name__ == "__main__":
-    main()
+    try:
+        Main(get_args()).main()
+    except (argparse.ArgumentError, argparse.ArgumentTypeError) as e:
+        print(e)
+    except Exception as e:
+        print(f"Unexpected exception: {e}")

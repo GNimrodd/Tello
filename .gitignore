@@ -1,5 +1,6 @@
 dependencies/*
 Pipfile.lock
+frames/*
 __pycache__/*
 venv/*
 .idea/*
