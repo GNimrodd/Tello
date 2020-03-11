@@ -5,11 +5,31 @@ from utils import CommandLineParser, GLOBALS
 from lsd_slam import LSDSlamSystem
 import time
 
+
+
+"""
+    The TELLO drones have a unique wifi, each named TELLO-XXXXX, We've hardcoded our drones here. Change this so it 
+    fits yours. 
+"""
 DRONES = {"Frodo": "TELLO-579043",
           "Sam": "TELLO-578FDA"}
 
-
 class Main(CommandLineParser):
+    """
+        command-line terminal for the project.
+        --ssid  :   The drone to be controlled. It should be active and searching for connection to work.
+
+        --doa-check :   Quick check for connectivity and battery.
+        --with-camera   :   Set True to recieve video stream from drone.
+        --keyboard  :   Use the keyboard to control the drone. Press 'H' afterwards to receive instructions
+        --lsd-slam  :   Activate LSD-SLAM for the drone, overrides camera.
+        capture_frames  :   save the captured frames from the camera
+        frame_dir   :   The dir where the frames are saved
+        frame_capture_rate  : rate of capture, default is 0.1
+
+        Example:
+        python3 main.py --ssid Frodo --keyboard --with-camera --verbose -d capture_frame frame_dir=frames frame_capture_rate=0.2
+    """
     
     def __init__(self):
         super().__init__(prog="DJI Tello LSD-SLAM")
@@ -73,9 +93,6 @@ class Main(CommandLineParser):
             self.slam_system.start()
         KeyboardControl(self.drone, camera=self.drone.stream if show_video else None).pass_control(
             (lambda: not self.slam_system.is_alive()) if self.slam_system.is_initialized else (lambda: False))
-
-
-# python3 main.py --ssid Frodo --keyboard --with-camera --verbose -d capture_frame frame_dir=frames rame_capture_rate=0.2
 
 
 if __name__ == "__main__":

@@ -25,8 +25,8 @@ class TelloResponse(Enum):
 
 class DroneController(logger_mixin()):
     """
-    A drone representation.
-    Saves drone data
+    A drone representation, implements the controller functions of the drone.
+    Saves drone data and communication functions variables.
     """
 
     TELLO_ADDRESS = ('192.168.10.1', 8889)

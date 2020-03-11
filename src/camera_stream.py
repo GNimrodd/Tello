@@ -8,7 +8,9 @@ from utils import logger_mixin, RUN_ID
 
 
 class CameraStream(logger_mixin()):
-
+"""
+    Camera stream controller.
+"""
     def __init__(self, device: Optional[str] = None, **kwargs):
         self.device = device  # the address of the drone cam
         self.show_cam = kwargs.get('show_cam', False)  # display a the video stream in a window

@@ -6,6 +6,10 @@ from typing import Union
 LIVE = 0
 OFFLINE = 1
 
+"""
+The files are hardcoded and should be replaced here:
+"""
+
 CALIBRATION_FILE = "/home/nimrodd/code/Tello/lsd_slam/calibration.xml"
 LSD_SLAM_LIVE_APP = "/home/nimrodd/code/lsd_slam_noros/bin/live_main"
 LSD_SLAM_OFFLINE_APP = "/home/nimrodd/code/lsd_slam_noros/bin/main_on_images"

@@ -11,7 +11,7 @@ from camera_stream import CameraStream
 
 class KeyboardControl(logger_mixin()):
     """
-    controlling the drone via keyboard
+    controlling the drone via keyboard, will display the camera information if set to work.
     """
 
     def __init__(self, drone: DroneController, control_window_size: Tuple[int, int] = (1280, 720),
